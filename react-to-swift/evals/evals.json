@@ -1,0 +1,23 @@
+{
+  "skill_name": "react-to-swift",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Port this React component to SwiftUI for our macOS app, pixel-perfect: <div className=\"flex items-center gap-2 h-8 px-3 border border-rule rounded-md text-[13px] leading-[1.5] tracking-[-0.01em] text-ink-2 disabled:opacity-40\"><Icon size={14}/>{label}</div>",
+      "expected_output": "SwiftUI view using strokeBorder inside the border box, padding 12+1, fixed height 32, fixedSize custom font, kerning -0.13, CSS half-leading, compositingGroup before opacity for disabled.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "We have a Next.js prototype of a meeting summary: a long paragraph with inline person mention chips (avatar + name in a capsule) and a word-by-word fade-in. Rebuild it natively in SwiftUI so it looks the same and scrolls smoothly.",
+      "expected_output": "One Text per paragraph, chips drawn behind invisible name runs via Text.LayoutKey, TextRenderer for per-word reveal, no view per word; parity check via screenshots and pixdiff.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "the settings screen I ported from tailwind looks almost right but every control is a bit bigger and the section separators sit on top of the padding, also the shadow of the floating pill is too dark. help me match the web exactly",
+      "expected_output": "Diagnoses stroke vs strokeBorder, border-t occupying its own row, negative-spread shadow as blurred shrunk shape; fixes in the kit; verifies with headless reference screenshot and pixdiff --ink.",
+      "files": []
+    }
+  ]
+}

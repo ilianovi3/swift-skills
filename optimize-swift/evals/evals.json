@@ -1,0 +1,23 @@
+{
+  "skill_name": "optimize-swift",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our macOS meeting screen in SwiftUI stutters when I scroll with the trackpad, but only on some parts of the screen, and it feels fine when the cursor is over the scroll bar. It's a ScrollView with a VStack of ~20 blocks, each block has rows with onHover highlights, time buttons and person chips. Release build. Find the cause and fix it without changing how it looks.",
+      "expected_output": "Code-first review naming hit-testing fan-out and shared hover state; a plan to record real scroll (not synthetic) with the 120 Hz moving metric; fixes: AppKit-hosted rows, per-item hover flags; no lazy grid for expensive blocks.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "my swiftui mac app window has a custom title bar (.hiddenTitleBar) and everything lags when the list scrolls, Instruments shows _resetDragMargins near the top. what do i do",
+      "expected_output": "Explains drag-region recompute under a hidden title bar; fix with window.isMovable = false and WindowDragGesture on custom bars; verify drag and double-click zoom; measure before/after.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The list of 500 items with avatars (AsyncImage) and tag chips laid out with a custom flow Layout drops to 60fps on our 120Hz MacBook. Optimize it.",
+      "expected_output": "ImageIO thumbnail cache instead of AsyncImage, flow layout measuring once in cache, cheap rows for the lazy list, record with the user and compare with a reference app.",
+      "files": []
+    }
+  ]
+}

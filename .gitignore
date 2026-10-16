@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.trace
+perf-traces/
+*-workspace/
+# compiled helpers (built on first run from the .swift sources)
+optimize-swift/scripts/cue
+react-to-swift/scripts/.wid
