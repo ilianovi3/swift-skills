@@ -64,3 +64,7 @@ should be made harder.
 A new finding about performance or web-to-native porting goes into the matching `references/*.md` with before/after
 numbers and how to confirm it; rejected experiments are recorded too. Keep `SKILL.md` short (under 500 lines) and put
 details in `references/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
