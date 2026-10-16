@@ -12,6 +12,7 @@ pattern names the root cause it answers (`root-causes.md`).
 - ScrollCover — no hover during scroll without toggling content (§8)
 - WindowDrag — custom title bars without drag-region recompute (§2)
 - ThumbnailCache — images in lists (§9)
+- LayerAnimations — idle loops (shimmer, pulsing dot, spinner) off the main thread
 
 ---
 
@@ -285,3 +286,30 @@ import ImageIO
 // In the view: px = Int((size * displayScale).rounded(.up)); show image(url:px:) ?? placeholder;
 // .task(id: url) { if image(...) == nil { loaded = await load(...) } }
 ```
+
+
+## LayerAnimations
+
+Endless SwiftUI animations — `repeatForever`, a `TimelineView(.animation)` per skeleton bar, a fake waveform — keep the
+main thread busy at display rate for as long as they are visible, even when nothing else changes. A screen with 60–70
+shimmering bars runs ~70 body updates per frame at 120 Hz. Move the loop to Core Animation: the render server runs it
+with no main-thread work, and the curves and durations can be kept identical.
+
+- Shimmer: one `CAGradientLayer` per bar with a repeating `CABasicAnimation` on `locations` or a translation; take the
+  phase from `CACurrentMediaTime()` modulo the period so bars stay in sync like the old shared clock.
+- Pulsing dot: `CABasicAnimation(keyPath: "opacity")`, `autoreverses`, `repeatCount = .infinity`, same timing function.
+- Spinner: rotation on `transform.rotation.z`, linear, `repeatCount = .infinity`.
+- Honour Reduce Motion (`NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`) by not adding the animation.
+- A meter without real levels: cap `TimelineView(.animation(minimumInterval: 1/60))` or drive it from real input.
+
+Gotchas when the layer lives in an `NSViewRepresentable` (verified headlessly):
+- A representable that is proposed no size measures 0 (where `GeometryReader`/`Color.clear` would take 10): size the
+  slot with `Color.clear.frame(...)` and put the representable in `.overlay`.
+- AppKit resets `anchorPoint` on a view's backing layer whenever its frame changes — animate a sublayer you own, or
+  re-apply the anchor in `layout()`.
+- On a flipped view the layer's mask is top-down too, and a positive `rotation.z` turns clockwise.
+- Inherited SwiftUI values (foreground colour, colour scheme) do not reach a nested `NSHostingView` by themselves:
+  pass the whole environment with `.environment(\.self, env)` read from `@Environment(\.self)`.
+
+Verify: the trace of an idle screen should show no SwiftUI updates per frame; compare shimmer and dot side by side with
+the old build (blend of CA vs SwiftUI colours and rounded edges can differ by a pixel).
