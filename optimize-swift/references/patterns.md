@@ -161,6 +161,11 @@ func chipRects(_ layouts: [Text.LayoutKey.AnchoredLayout], _ proxy: GeometryProx
 }
 ```
 
+Deployment target 26+ (macOS 26 / iOS 26): `Text + Text` is deprecated there (it still builds without warnings for
+lower targets). Build the paragraph with interpolation instead — `Text("\(prefix)\(chip)\(rest)")` — and confirm that
+`customAttribute` runs survive by reading them back from `Text.LayoutKey` once; keep `+` behind the version check if
+you support both.
+
 Trap: preference closures (`backgroundPreferenceValue`/`overlayPreferenceValue` with a `GeometryReader`) run again on
 scroll frames; computing rects there showed up as ~300 ms per 20 s of scrolling. Compute rects once per layout
 (e.g. `onPreferenceChange` into `@State`, keyed by text and width) and only draw in the closures.
