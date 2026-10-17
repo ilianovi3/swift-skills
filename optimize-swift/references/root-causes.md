@@ -154,6 +154,13 @@ new layout, which sets the fractional frame again — 150 frame changes per seco
 - Icon paths parsed from strings on every draw (5 % in Debug, 1–2 % in Release): parse once, cache.
 - Localized-bundle lookups per string call: cache the bundle.
 - Derived lists (sort/filter) computed in `body`: compute when inputs change.
+- Client-side search on every keystroke: the cost is the no-match case, every string scanned to the end. Measured on
+  500 strings × 2.5 KB (Cyrillic, `-O`, M-series): `localizedStandardContains` 18.6 ms per pass;
+  `range(of:options: [.caseInsensitive, .diacriticInsensitive])` without a locale 119 ms (6× slower — do not "simplify"
+  to it); haystack folded once at write time (`folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)`)
+  plus `NSString.range(of:options: .literal)` with the folded query 5.4 ms; Swift `String.contains` on the folded text
+  23.6 ms. Keep `localizedStandardContains` while texts are short (~700 chars → ~5 ms); precompute the haystack when
+  it is not, and never decode the stored record per keystroke — store the search text next to the row.
 
 ## 12. When the main thread is idle but frames are slow
 
