@@ -75,6 +75,7 @@ structure choices with their reason. If the screen is long or interactive, run t
 
 ## Rules that save days
 - Strings verbatim from the reference (localization keys = source strings); no copy edits while porting.
+- A reference sentence built from a `plural(n, forms)` helper twice ("Remove from 4 meetings and 1 note?") is one String Catalog key with two `substitutions` (`"Remove from %#@meetings@ and %#@notes@?"`, each with `argNum` 1/2, `formatSpecifier` `lld` and its own plural variations), never glued fragments: word order, the conjunction and the noun's case differ by language. A count after a preposition often needs another grammatical case than the plain counter key ("5 встреч" vs "с 1 встречи") — give it its own key instead of reusing the nominative one. Check every form (one/few/many/other, each language) in a unit test that calls `String(localized: LocalizedStringResource(key, locale:, bundle:))`; works in SwiftPM package bundles too.
 - No new UI invented in Swift: if a state or element is missing in the reference, design it there first.
 - Never keep mock data in the product path; put demo content behind a Debug-only switch.
 - Give screens deep links or launch arguments that open any state directly — snapshots and recordings depend on it.
