@@ -134,6 +134,9 @@ paragraph, do not wrap views at all — use one `Text` (see the main skill).
   `.kern`, centered paragraph style) for `placeholderAttributedString`, `attributedStringValue` and the field
   editor's `typingAttributes`/text storage on every change; Enter via `control(_:textView:doCommandBy:)`;
   `.focused($state)` works on the representable both ways. `autocomplete="one-time-code"` → `contentType = .oneTimeCode`.
+  Keep it on one line with `cell.isScrollable = true`, not `usesSingleLineMode`: with a variable web font (Geist) the
+  single-line typesetter put the baseline ~9 pt above the field (measured by ink rows in an offscreen render), while
+  the system font looked fine.
 
 ## Accessibility attributes
 `aria-label` → `accessibilityLabel`; `role="heading"`/`h1–h6` → `.accessibilityAddTraits(.isHeader)`;
