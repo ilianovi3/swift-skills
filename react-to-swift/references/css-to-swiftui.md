@@ -69,7 +69,8 @@ extension View {
 | `items-center` / `items-start` / `items-baseline` | `HStack(alignment: .center / .top / .firstTextBaseline)` |
 | `justify-between` | `Spacer(minLength: 0)` between groups |
 | `flex-1 min-w-0` | `.frame(maxWidth: .infinity, alignment: .leading)` (+ `lineLimit` / `truncationMode`) |
-| `shrink-0` | `.fixedSize(horizontal: true, vertical: false)` |
+| `shrink-0` | `.fixedSize(horizontal: true, vertical: false)`; on a kit button that can also be `w-full` (label with `frame(maxWidth: .infinity)`), `fixedSize` kills the stretch — use a one-child `Layout` whose width is `max(proposal, ideal)` |
+| `whitespace-nowrap shrink-0` button next to links in `flex gap-5` | without the rule above `HStack` gives the button less than its width and `lineLimit(1)` cuts the label to "Contin…"; with it the button keeps its width and the links wrap, as in the browser |
 | `grid-cols-[minmax(0,1fr)_auto]` | `HStack { flexible.frame(maxWidth: .infinity) ; control.fixedSize() }` — the auto column sizes to content; without `fixedSize` HStack splits space and truncates the control |
 | `ml-auto` on a wrapped item | Push to trailing edge in a custom `Layout` or `ViewThatFits` |
 | `space-y-*` on a list | spacing on the stack, not padding on each child (`.padding` on a `Group` applies to every child) |
@@ -127,6 +128,12 @@ paragraph, do not wrap views at all — use one `Text` (see the main skill).
 - `contentEditable` single line still wraps by words like a span; Enter commits.
 - Text fields don't take line height: center the text with padding (`(lineHeight − natural) / 2`) and
   `baselineOffset(0)`, otherwise text and placeholder sit ~2 pt low.
+- `text-center tracking-[0.3em]` input (one-time code) can't be a SwiftUI `TextField` on macOS: the `prompt` ignores
+  `multilineTextAlignment` (placeholder stays at the leading edge while the empty caret sits in the middle) and
+  `.kerning`/`.tracking` reach only the prompt, never the typed text. Wrap `NSTextField`: one attribute set (font,
+  `.kern`, centered paragraph style) for `placeholderAttributedString`, `attributedStringValue` and the field
+  editor's `typingAttributes`/text storage on every change; Enter via `control(_:textView:doCommandBy:)`;
+  `.focused($state)` works on the representable both ways. `autocomplete="one-time-code"` → `contentType = .oneTimeCode`.
 
 ## Accessibility attributes
 `aria-label` → `accessibilityLabel`; `role="heading"`/`h1–h6` → `.accessibilityAddTraits(.isHeader)`;

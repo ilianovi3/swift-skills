@@ -52,7 +52,10 @@ if #available(macOS 26, iOS 26, *) {
 
 ## Tracking
 `tracking-[-0.01em]` → `.kerning(-0.01 * fontSize * scale)`; `tracking-wide` = 0.025em. Headings with negative
-tracking are easy to miss and visibly change line widths.
+tracking are easy to miss and visibly change line widths. A `TextField` (macOS) applies `.kerning` to its prompt
+only, not to the typed text — tracked inputs need `NSTextField` with `.kern` (css-to-swiftui, form controls).
+`num` (`tabular-nums`) on a custom font → Core Text feature `kNumberSpacingType`/`kMonospacedNumbersSelector` (Geist
+digits are proportional by default: "111111" is 58 % of "000000").
 
 ## Smoothing
 Browsers on macOS render with `-webkit-font-smoothing: antialiased` (thin). AppKit's default font smoothing makes
