@@ -26,6 +26,14 @@ const el = document.querySelector('[data-x]'); const r = el.getBoundingClientRec
 ```
 Use device scale factor 2 to compare with a Retina window at the same pixel scale.
 
+A fresh headless profile has empty `localStorage`: an onboarding gate will redirect every screen to `/welcome` and the
+screenshot shows the wrong page without an error. Seed the persisted state before navigation
+(`page.add_init_script("localStorage.setItem('<key>', JSON.stringify({onboarded: true}))")`) and assert a text the
+target state must contain, not just that a PNG was written.
+
+Turbopack (Next 16) refuses a symlinked `node_modules` ("points out of the filesystem root"): in a git worktree run
+`npm ci` there instead of linking the main checkout.
+
 ## App screenshot without stealing focus
 `scripts/window_shot.sh OUT.png APP_BINARY [args…]` launches the app with arguments that open the state (deep link,
 launch argument, fixture), waits `LEAD` seconds, captures only its largest window (`screencapture -x -o -l <id>`,
