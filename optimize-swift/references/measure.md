@@ -4,6 +4,7 @@
 - Build
 - Recording the user's scroll
 - Reading a trace
+- Offscreen harness (no screen needed)
 - Reference app
 - Blind A/B protocol
 - Event-rate check
@@ -50,6 +51,30 @@ scroll bar (isolates hit-testing/hover); hover sweep without scroll; screen open
 
 Attribution: `scripts/trace_callers.py callers TRACE 'regex' [depth]` prints the call chains above the deepest match
 (who triggers it); `inside TRACE 'regex'` prints what the matched frames spend time on (self and inclusive).
+
+## Offscreen harness (no screen needed)
+
+For "a state change on this screen feels slow" (switching a filter tab, applying a search) the cost can be measured
+without the user's screen and without UI tests: a hosted unit test (the app is the test host) builds the screen in an
+`NSHostingView` inside an `NSWindow` that is created but never ordered front, drives the state change the same way the
+control does (expose the state as an optional `Binding` on the screen for tests; the click handler only sets it), and
+pumps the main run loop. Rules learned the hard way:
+- Pump with a *positive* timeout (`RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))`): with
+  a zero timeout CoreFoundation skips the "before waiting" observers, and that is where SwiftUI and CA commit.
+- Measure two numbers: the first pass that had `needsLayout` after the change (the synchronous graph update + layout —
+  what the eye waits for), and the time to quiet (two passes without layout). The second includes every running
+  animation: a 0.2 s implicit animation on a tab's background keeps the hosting view laying out for 0.2 s, so "time to
+  quiet" says nothing about the switch itself.
+- The accessibility tree is not built for a window that is not on screen (`accessibilityChildren()` is empty), so
+  in-process `accessibilityPerformPress` cannot drive controls there; drive the binding instead.
+- `cacheDisplay(in:to:)` draws the page in software and spends most of its time in `CGContextEndTransparencyLayer`
+  for every `compositingGroup()`; it is a rough upper bound for text drawing, not what CA does on screen. Use
+  `CABackingStoreUpdate_` samples from a Time Profiler attached to the test host for the real redraw cost.
+- Build the test host as Release with testability (`-configuration Release ENABLE_TESTABILITY=YES` plus the demo-data
+  flag); attach `xctrace` by finding the host pid by executable path and process name — `pgrep -f` on the path alone
+  matches short-lived helpers and `xctrace` then fails with "Cannot find process".
+- Write the numbers to a file in the host's container (sandboxed `NSTemporaryDirectory()`) and print it from the make
+  target: `xcodebuild -quiet` drops the test's stdout.
 
 ## Reference app
 

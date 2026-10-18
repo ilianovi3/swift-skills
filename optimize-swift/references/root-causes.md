@@ -18,6 +18,7 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 11. Menu bar extras, icons and other small constant costs
 12. When the main thread is idle but frames are slow
 13. Things that look guilty but were not
+14. A non-lazy container inside a lazy stack
 
 ---
 
@@ -179,3 +180,21 @@ windows, the app is not CPU-bound there. Check, in order:
 Fonts (already cached), mention parsing (< 1 %), database reads on the main thread, shadows, a wave animation, a
 blinking record dot, system checkboxes, a 300 ms hover delay idea (the cost is the search, not the reaction).
 Measure before rewriting any of these.
+
+## 14. A non-lazy container inside a lazy stack
+
+**Symptom.** Switching a filter on a grouped list (sections by day, pinned headers) lags, and the lag grows with the
+list, not with the window. The data work is microseconds; the trace shows SwiftUI graph updates and layout.
+
+**Cause.** `LazyVStack { ForEach(groups) { Section { VStack { ForEach(rows) { Row } } } } }`: the `VStack` is one
+lazy child, so the moment a group is visible *all* its rows are built, laid out and (on a filter change) diffed —
+including the dozens below the fold. A grouped list of 500 meetings builds every row of every visible month.
+
+**Fix.** Make rows direct children of the `Section` (`Section { ForEach(rows) { Row } }`); the lazy stack then
+realizes only the rows on screen. Decorations the `VStack` carried (a top rule with padding, a bottom gap) become
+their own cheap lazy items (`Color.clear.frame(height:).rule(.top)` first, a footer spacer last) — pixels unchanged.
+A `.transition` on rows and `.animation(value: rowIdsKey)` on the stack still animate insertions and moves.
+
+**Signature.** Nothing of yours in the top symbols; `ViewGraphRootValueUpdater.render`, `DisplayList.ViewUpdater`,
+`ShapeStyleResolver`/`resolveHDR` (colors resolved for every freshly built row) dominate the first pass after the
+change; the count of built rows (not the visible count) sets the cost.
