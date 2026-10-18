@@ -183,18 +183,22 @@ Measure before rewriting any of these.
 
 ## 14. A non-lazy container inside a lazy stack
 
-**Symptom.** Switching a filter on a grouped list (sections by day, pinned headers) lags, and the lag grows with the
-list, not with the window. The data work is microseconds; the trace shows SwiftUI graph updates and layout.
+**Symptom.** A grouped list (sections by day, pinned headers) has many more rows built than visible: software raster
+of the page grows with the list, every hover hit-test walks the responders of every built row, and each row carries
+its platform views (`draggable`, `contextMenu`, `help`).
 
 **Cause.** `LazyVStack { ForEach(groups) { Section { VStack { ForEach(rows) { Row } } } } }`: the `VStack` is one
-lazy child, so the moment a group is visible *all* its rows are built, laid out and (on a filter change) diffed —
-including the dozens below the fold. A grouped list of 500 meetings builds every row of every visible month.
+lazy child, so the moment a group is visible *all* its rows are built — including the dozens below the fold. A grouped
+list of 500 meetings builds every row of every visible month.
 
 **Fix.** Make rows direct children of the `Section` (`Section { ForEach(rows) { Row } }`); the lazy stack then
 realizes only the rows on screen. Decorations the `VStack` carried (a top rule with padding, a bottom gap) become
 their own cheap lazy items (`Color.clear.frame(height:).rule(.top)` first, a footer spacer last) — pixels unchanged.
 A `.transition` on rows and `.animation(value: rowIdsKey)` on the stack still animate insertions and moves.
 
-**Signature.** Nothing of yours in the top symbols; `ViewGraphRootValueUpdater.render`, `DisplayList.ViewUpdater`,
-`ShapeStyleResolver`/`resolveHDR` (colors resolved for every freshly built row) dominate the first pass after the
-change; the count of built rows (not the visible count) sets the cost.
+**What it does and does not buy (measured offscreen, Release).** The synchronous update after a filter change stayed
+at 10–16 ms with both structures, at 46 and at 332 rows — the lazy stack even costs 2–4 ms more in bookkeeping; the
+software raster of built rows fell 98–112 → 73–79 ms on 500 rows. So this is not a fix for "the first frame is slow";
+it caps the number of built rows, which is what hover hit-testing and per-row platform views scale with. If a filter
+switch still feels slow after it, record with the cursor: the suspect is hover re-evaluated on every frame of the
+control's own animation (§1), not the graph update.
