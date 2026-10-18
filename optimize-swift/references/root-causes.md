@@ -51,6 +51,13 @@ inside an AppKit stack (pattern `HostedStack` in `patterns.md`). `NSView.hitTest
 frame contains the point, so SwiftUI walks one row instead of the whole screen. Build all rows up front, exactly like
 a `VStack` (no laziness, see §7). In the production case: hit-testing 2.6 → 0.9 s, frames at 120 Hz 74 → 89 %.
 
+**Cheap partial fix.** Make the row's static content inert: wrap labels, icons and status dots in
+`Group { … }.allowsHitTesting(false)` (a `Group` inside a stack keeps the children as separate stack items, so layout and
+pixels stay the same), leave the row's `contentShape`, its button/drag gestures and anything with `.help` alone. One
+search went 0.9 → 0.7 ms offscreen and the per-animation total 55–66 → 48–53 ms; the rest is the row's own responders
+(`Button`, `.onHover`, `.draggable`, `.contextMenu`, avatars with tooltips) times visible rows, which only the AppKit
+partition removes.
+
 **Traps.**
 - A custom `contentShape` on a row does not stop the walk — SwiftUI still asks the children
   (`ContentShapeResponder.containsGlobalPoints` → `superValue`: 562 of 611 ms in one trace were spent below the shape).

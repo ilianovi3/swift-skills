@@ -84,6 +84,12 @@ pumps the main run loop. Rules learned the hard way:
   `representation(using: .png)`) and diff A against B with `react-to-swift/scripts/pixdiff.py`: a "pixels unchanged"
   check without a window on the screen. It compares the two builds' SwiftUI trees under the same software renderer,
   not against the on-screen compositor.
+- One screen per process. Running variant A and variant B as two hosting views in the same test looked attractive (one
+  build, identical conditions) and produced two artifacts: a window that is never closed stays in `NSApp.windows` and
+  its SwiftUI tree keeps reacting to the shared state, so the second variant's numbers "improved" by half with no code
+  change; and the second instance of the same screen in one process did not draw one of its rows (data identical), so
+  the PNGs differed. Close and detach the previous window if you must, but prefer two builds with the same single-screen
+  harness — and read the numbers across three runs in different positions before believing a 20 % difference.
 - `cacheDisplay(in:to:)` draws the page in software and spends most of its time in `CGContextEndTransparencyLayer`
   for every `compositingGroup()`; it is a rough upper bound for text drawing, not what CA does on screen. Use
   `CABackingStoreUpdate_` samples from a Time Profiler attached to the test host for the real redraw cost.
