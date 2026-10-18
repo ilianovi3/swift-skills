@@ -35,7 +35,7 @@ reference width (Playwright or a headless DevTools MCP — never a visible windo
 | Paragraph with inline chips/mentions/tags | One `Text`; chips drawn from `Text.LayoutKey` rects (`optimize-swift`, InlineDecorations) — never a view per word |
 | Word-by-word reveal | `TextRenderer` with per-run opacity, not word views |
 | Hover highlight shared across items | Per-item observable flags; hover only where it adds meaning |
-| `contentEditable`, `<textarea>` | `TextField(axis: .vertical)` or `NSTextView`/`UITextView` |
+| `contentEditable`, `<textarea>` | `TextField(axis: .vertical)` or `NSTextView`/`UITextView`; with atomic inline chips (mentions) — `NSTextView` + `NSTextAttachment` (css-to-swiftui, Form controls) |
 | `<select>`, dropdown menus | `Menu`/`Picker`/`NSPopUpButton` styled to match |
 | Popover, dialog, toast | `popover`/`NSPopover`, `sheet`/alert, overlay with transition |
 | `title=` tooltip | `.help()` — but each one is a hit-test target; skip on dense repeated items |

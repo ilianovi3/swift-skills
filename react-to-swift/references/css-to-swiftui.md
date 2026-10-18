@@ -154,10 +154,24 @@ row that barely fits at the default text size breaks again at the largest one.
   turn the flag off for text inside a `Button` that is a link (a click there must stay a click). Put it on the single
   `Text` of a paragraph, before overlays that hold the inline chips' buttons, so the chips stay clickable. Selection
   stays within one `Text` (no dragging across blocks as in a browser) — a `native:` difference worth stating.
-- Editing text that carries inline markup (mention tokens, redacted spans) in a plain field: show the tokens as their
-  visible text, remember each token's position, and on save restore the tokens whose text is unchanged — positions
-  before and after the edited span (common prefix and suffix of old and new text) map exactly, inside it search in
-  order. Searching the whole string greedily attaches a token to an earlier plain occurrence of the same name.
+- Editing text that carries inline markup (mention tokens, redacted spans) — the web keeps chips atomic in
+  `contentEditable` with `contenteditable="false"` islands carrying their source (`data-mark`), inserts them through
+  `execCommand('insertHTML')` so ⌘Z covers them, and moves the caret out of a chip after an insert (the browser leaves
+  it inside, where typing fails). Natively a plain `TextField` cannot hold atoms (they degrade to text and a
+  diff-based token restore that guesses). Use `NSTextView` (explicit TextKit 1 stack) via `NSViewRepresentable`: each
+  chip is an `NSTextAttachment` subclass holding its source, drawn by an `NSTextAttachmentCell` whose image is the kit's
+  SwiftUI chip rendered with `ImageRenderer` (same look; set the window's backing scale, the environment
+  `colorScheme` and `performAsCurrentDrawingAppearance`, re-render on `viewDidChangeEffectiveAppearance`). One
+  character per chip gives the web behavior for free: the caret never lands inside, ⌫ deletes it whole, undo restores
+  it. Serialize by walking `.attachment` runs. Vertical position: `cellBaselineOffset` = half the x-height minus half
+  the image height (`vertical-align: middle`). CSS line height: min = max line height and a positive `baselineOffset`
+  of the half-leading (TextKit 1 puts the extra above the glyphs). Give the text view its own `UndoManager`
+  (`undoManager(for:)`) so the field's history dies with it; route clipboard and drag through
+  `writablePasteboardTypes`/`writeSelection(to:type:)` and `readablePasteboardTypes`/`readSelection(from:type:)`
+  (plain text with names outward, a private markup type between fields); handle ↩ ⇥ ↑↓ ⎋ in
+  `textView(_:doCommandBy:)` (Esc arrives as `cancelOperation:` or `complete:`). A typeahead above the caret is a
+  SwiftUI overlay positioned from `boundingRect(forGlyphRange:)`, not an `NSPopover` (a popover can take key focus and
+  break typing); suppress it while `hasMarkedText()` (IME), flip it below when `visibleRect` has no room above.
 - Text fields don't take line height: center the text with padding (`(lineHeight − natural) / 2`) and
   `baselineOffset(0)`, otherwise text and placeholder sit ~2 pt low.
 - `text-center tracking-[0.3em]` input (one-time code) can't be a SwiftUI `TextField` on macOS: the `prompt` ignores
