@@ -10,6 +10,7 @@ Text is where ports drift most, and where the wrong technique also costs the mos
 - Tracking
 - Smoothing
 - Wrapping and pixel positions
+- Character classes and graphemes (text logic)
 - Coverage test
 
 ## Fonts and registration
@@ -77,6 +78,24 @@ func applicationWillFinishLaunching(_: Notification) {
   line. Accept and list it as a native difference rather than fighting the line breaker.
 - `line-clamp-N` → `lineLimit(N)`; `truncate` → `lineLimit(1)` + `truncationMode(.tail)`; `whitespace-nowrap` on an
   inline chip → no-break spaces (U+00A0) inside it.
+
+## Character classes and graphemes (text logic)
+Ported text logic (initials, "word at the caret", mention suggestions, counters) must agree with the reference on
+the same test vectors; the usual drift is in what counts as a letter and what counts as one character.
+- JS `/\p{L}/u` → `unicodeScalars.first?.properties.generalCategory` in L* (Lu, Ll, Lt, Lm, Lo). Not
+  `Character.isLetter`: it is the Alphabetic property, wider — circled letters ("Ⓐ"), Roman numerals ("Ⅻ") pass it.
+  `\p{N}` → Nd/Nl/No the same way (`Character.isNumber` follows Numeric_Type, also wider).
+- `Intl.Segmenter(granularity: 'grapheme')` ≈ Swift `Character`, including Indic conjuncts ("क्ष" is one grapheme on
+  both sides with current ICU/Swift); code-point code on the web (`Array.from(s)`, `/\p{L}+$/u`) splits NFD "é" and
+  syllables — fix the reference, then share vectors (NFD, Devanagari, emoji with ZWJ, U+200B/U+200F before a name).
+- Strip invisible format characters (`\p{Cf}`, `generalCategory == .format`) before taking initials, or a leading
+  zero-width space hides the first word. Prefix match of a partly typed syllable — by scalars
+  (`unicodeScalars.starts(with:)`), length thresholds — in graphemes (`count`).
+- A server limit counted in code points (`len()` in Python, `[...s].length` in JS) is `unicodeScalars.count` in Swift,
+  never `count` (graphemes) or `utf16.count`.
+- An invisible escape inside user text (e.g. U+034F COMBINING GRAPHEME JOINER to keep a typed `@{…}` from being read
+  as markup) joins the previous `Character`, so `hasPrefix("@{")` is false on the escaped form — good; but write it
+  escaped in source (`"\u{034F}"`) and compare test strings by `unicodeScalars`, because a stray copy is invisible.
 
 ## Coverage test
 A unit test that every bundled face has glyphs for the characters your content uses
