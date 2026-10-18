@@ -131,6 +131,33 @@ row that barely fits at the default text size breaks again at the largest one.
 - `<details>`/`<summary>` marker is a filled triangle ▸/▾ in the text color (~0.46 em), not a chevron icon.
 - `list-style: disc` in serif text is a ~5 pt circle 4 pt from the edge; the glyph "•" is smaller.
 - `contentEditable` single line still wraps by words like a span; Enter commits.
+- Keys of fields, macOS conventions (HIG: Esc cancels the current operation, Return confirms) — decide once in the kit,
+  not per screen: an inline edit (`contentEditable` text) commits on Return and on blur, Esc restores the value it had
+  on focus and leaves (Finder rename); a form field runs the form action on Return, Esc leaves the field keeping the
+  text; inside a popover or sheet Esc closes the container. SwiftUI `TextField` does nothing on Esc by itself:
+  `.onKeyPress(.escape)` on the field, leave with `window.makeFirstResponder(nil)` (no `FocusState` binding needed at
+  every call site), and give popovers/sheets an environment "close" action the field calls. Store that action in an
+  `Equatable` wrapper whose `==` is always true — a bare closure in `@Entry` warns and invalidates every dependent on
+  each update of the presenting view.
+- Multiline `TextField(axis: .vertical)` on macOS: Return submits, ⌥↩ inserts a newline natively
+  (`insertNewlineIgnoringFieldEditor:`). For ⇧↩ (the web's Shift+Enter) send that same action to the first responder —
+  `NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)` — it lands at the
+  caret; appending `"\n"` to the binding puts it at the end. A Return handler that sends on every modifier swallows ⌥↩:
+  return `.ignored` for Option.
+- A plain-style `Button` around an `HStack` of icon and text hit-tests only the glyphs and the icon's strokes (the gap
+  and the line box are dead), while a web `<a class="flex gap-1">` is clickable over its whole box. Put
+  `.contentShape(Rectangle())` on the label; to give a tiny link a larger target without moving anything, pad inside
+  the content shape and cancel the padding outside (`.padding(p).contentShape(Rectangle()).padding(-p)`), the
+  `-m-* p-*` trick of the web.
+- Selectable text (`user-select` is on by default on the web): `.textSelection(.enabled)` is inherited and the inner
+  modifier wins, so it cannot be switched off from outside for one subtree — gate it by your own environment flag and
+  turn the flag off for text inside a `Button` that is a link (a click there must stay a click). Put it on the single
+  `Text` of a paragraph, before overlays that hold the inline chips' buttons, so the chips stay clickable. Selection
+  stays within one `Text` (no dragging across blocks as in a browser) — a `native:` difference worth stating.
+- Editing text that carries inline markup (mention tokens, redacted spans) in a plain field: show the tokens as their
+  visible text, remember each token's position, and on save restore the tokens whose text is unchanged — positions
+  before and after the edited span (common prefix and suffix of old and new text) map exactly, inside it search in
+  order. Searching the whole string greedily attaches a token to an earlier plain occurrence of the same name.
 - Text fields don't take line height: center the text with padding (`(lineHeight − natural) / 2`) and
   `baselineOffset(0)`, otherwise text and placeholder sit ~2 pt low.
 - `text-center tracking-[0.3em]` input (one-time code) can't be a SwiftUI `TextField` on macOS: the `prompt` ignores
