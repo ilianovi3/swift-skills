@@ -54,7 +54,8 @@ a `VStack` (no laziness, see §7). In the production case: hit-testing 2.6 → 0
 **Cheap partial fix.** Make the row's static content inert: wrap labels, icons and status dots in
 `Group { … }.allowsHitTesting(false)` (a `Group` inside a stack keeps the children as separate stack items, so layout and
 pixels stay the same), leave the row's `contentShape`, its button/drag gestures and anything with `.help` alone. One
-search went 0.9 → 0.7 ms offscreen and the per-animation total 55–66 → 48–53 ms; the rest is the row's own responders
+search went 0.9 → 0.7 ms offscreen (the per-animation total 55–66 → 48–53 ms was taken over rows that did not move —
+see the `Binding?` trap in `measure.md`); the rest is the row's own responders
 (`Button`, `.onHover`, `.draggable`, `.contextMenu`, avatars with tooltips) times visible rows, which only the AppKit
 partition removes.
 
@@ -63,8 +64,9 @@ partition removes.
   (`ContentShapeResponder.containsGlobalPoints` → `superValue`: 562 of 611 ms in one trace were spent below the shape).
 - A transparent cover on top (§8) does not make the search cheaper either: `ViewResponder.hitTest` collects every
   responder under the point with weights, there is no early exit at the topmost hit. Measured offscreen with a cover
-  raised for the whole row animation: 61 → 58 ms per 0.25 s switch (≈ 78 searches), i.e. noise. The cover only keeps
-  rows from flipping their hover state.
+  raised for the whole 0.25 s row animation (rows really moving): 28–34 → 27.5–32 ms of searches per switch (50–79
+  searches), one search at rest unchanged — noise. The cover only keeps rows from flipping their hover state. (It did
+  lower the first pass of switches that insert many rows, 26–29 → 19–21 ms, for a reason not yet traced.)
 - Removing off-screen rows from hit-testing with `allowsHitTesting(visible)` + `onScrollVisibilityChange` cut the
   search by 40 % but every toggle redraws text (§8). Prefer the AppKit partition.
 - Separate hosting views do not share one layout pass: a change every row observes now re-lays out every row

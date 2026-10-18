@@ -63,8 +63,17 @@ Attribution: `scripts/trace_callers.py callers TRACE 'regex' [depth]` prints the
 For "a state change on this screen feels slow" (switching a filter tab, applying a search) the cost can be measured
 without the user's screen and without UI tests: a hosted unit test (the app is the test host) builds the screen in an
 `NSHostingView` inside an `NSWindow` that is created but never ordered front, drives the state change the same way the
-control does (expose the state as an optional `Binding` on the screen for tests; the click handler only sets it), and
-pumps the main run loop. Rules learned the hard way:
+control does (expose the state to tests as a stored `Binding<State?>` property defaulting to `.constant(nil)`, the
+screen falls back to its own `@State` on `nil`; the click handler only sets it), and pumps the main run loop. Rules
+learned the hard way:
+- **Never `Binding?` for that hook.** SwiftUI refreshes a stored `Binding` (like `@Binding`) before `body` and subscribes
+  the view to its source; an `Optional<Binding>` is invisible to it. With `var tab: Binding<Tab>?` the screen's `body` was
+  never re-evaluated after the test changed the tab (0 body calls), only the child control holding `@Binding` repainted:
+  a whole round of numbers measured a tab-highlight animation over rows that never changed, and "the second instance of
+  the screen does not draw a row" was just a tree frozen on the tab its binding was created with.
+- **Prove the harness changes what you measure** before reading any number: count `body` calls once with a probe, or
+  assert that the raster after the change equals the raster of the same screen built directly in the target state
+  (keep that assertion as a test — it fails the moment the hook stops working).
 - Pump with a *positive* timeout (`RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))`): with
   a zero timeout CoreFoundation skips the "before waiting" observers, and that is where SwiftUI and CA commit.
 - Measure two numbers: the first pass that had `needsLayout` after the change (the synchronous graph update + layout —
@@ -84,12 +93,11 @@ pumps the main run loop. Rules learned the hard way:
   `representation(using: .png)`) and diff A against B with `react-to-swift/scripts/pixdiff.py`: a "pixels unchanged"
   check without a window on the screen. It compares the two builds' SwiftUI trees under the same software renderer,
   not against the on-screen compositor.
-- One screen per process. Running variant A and variant B as two hosting views in the same test looked attractive (one
-  build, identical conditions) and produced two artifacts: a window that is never closed stays in `NSApp.windows` and
-  its SwiftUI tree keeps reacting to the shared state, so the second variant's numbers "improved" by half with no code
-  change; and the second instance of the same screen in one process did not draw one of its rows (data identical), so
-  the PNGs differed. Close and detach the previous window if you must, but prefer two builds with the same single-screen
-  harness — and read the numbers across three runs in different positions before believing a 20 % difference.
+- Several screens in one process are fine once each starts from the same state: six trees built one after another
+  (previous windows closed with `contentView = nil; close()` or left open) gave byte-equal rasters and the same pass
+  counts. A shared state object carried over from the previous tree is the trap — the next tree starts elsewhere. Still
+  prefer A and B as two builds of the same harness, and read the numbers across three runs in different positions
+  before believing a 20 % difference.
 - `cacheDisplay(in:to:)` draws the page in software and spends most of its time in `CGContextEndTransparencyLayer`
   for every `compositingGroup()`; it is a rough upper bound for text drawing, not what CA does on screen. Use
   `CABackingStoreUpdate_` samples from a Time Profiler attached to the test host for the real redraw cost.
