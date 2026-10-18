@@ -115,6 +115,13 @@ for r in prof:
 if total:
     print(f"  main thread {total} ms: " + ", ".join(f"{k} {cnt[k]}" for k, _ in SIGNATURES if cnt[k]))
     print("  app: " + "; ".join(f"{x} {v}" for x, v in app.most_common(8)))
+    # Longest app frames with the main-thread ms spent inside them: a 200 ms "frame" with 15 ms of work is an idle
+    # gap between two interactions (nothing to draw), not a hang — only frames that are mostly busy are hangs.
+    stamps = sorted(ms(r[0]) for r in prof if r[1].attrib.get("fmt", "").startswith("Main Thread"))
+    gaps = sorted(((b - x, x, b) for x, b in zip(ts, ts[1:]) if b - x < 250), reverse=True)[:5]
+    if gaps:
+        print("  longest frames (ms, busy ms inside): " + ", ".join(
+            f"{g:.0f} ({sum(1 for t in stamps if x <= t < b)})" for g, x, b in gaps))
 
 if a.series:
     rn = collections.Counter(int(t / B) for t in renders)

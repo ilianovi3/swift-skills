@@ -46,7 +46,13 @@ scroll bar (isolates hit-testing/hover); hover sweep without scroll; screen open
 - `hitch ms/s` — Apple's hitch time per second; good < 5, visible > 10. It misses steady 60 Hz.
 - `moving` — from display renders (`hitches-renders`), gaps > 60 ms dropped: what the eye sees while things move.
 - `main thread` — 1 ms Time Profiler samples on the main thread, split by signature (edit `SIGNATURES` in the
-  script for your app); `app` — your binary's hottest symbols.
+  script for your app); `app` — your binary's hottest symbols. Buckets can nest: when a list sits in a `ScrollView`,
+  the hover search runs *inside* the SwiftUI render (through the platform `NSScrollView`), so `hover hit-test` is part
+  of `SwiftUI render`, not in addition to it. Confirm with `trace_callers.py callers` before adding buckets up.
+- `longest frames` — the five longest app-frame intervals with the main-thread ms spent inside each. In a recording
+  of clicking between filters the "worst frame 212 ms" held 16 ms of work: the app simply had nothing to draw between
+  two clicks, and the 16 ms were one `mouseMoved` hit test. Only a frame that is mostly busy is a hang; `max` alone
+  misleads whenever the user pauses.
 - `--series` — per half second: display renders, app updates, main-thread ms. Use it when lag comes and goes.
 
 Attribution: `scripts/trace_callers.py callers TRACE 'regex' [depth]` prints the call chains above the deepest match
@@ -67,6 +73,17 @@ pumps the main run loop. Rules learned the hard way:
   quiet" says nothing about the switch itself.
 - The accessibility tree is not built for a window that is not on screen (`accessibilityChildren()` is empty), so
   in-process `accessibilityPerformPress` cannot drive controls there; drive the binding instead.
+- A synthetic `mouseMoved` sent with `window.sendEvent` does not reach SwiftUI's hover search in such a window
+  (measured 0.0–0.1 ms). `hostingView.hitTest(point)` does: it enters `PlatformHitTestingManager.hitTest` and walks
+  the same responders as the on-screen hover update. Call it once after every pass that had `needsLayout` and sum the
+  time — that is the per-frame hover cost SwiftUI pays on screen during an animation that moves responders (§1 of
+  `root-causes.md`); call it once at rest for the cost of a single search. Offscreen the walk is cheaper than on
+  screen (0.8 ms against 2–3 ms per frame and 10–18 ms per `mouseMoved` event in the same app: smaller window, no
+  sidebar, one search instead of up to three), so compare A against B, not against the recording.
+- Write a PNG of `cacheDisplay`'s bitmap for each state (`bitmapImageRepForCachingDisplay` →
+  `representation(using: .png)`) and diff A against B with `react-to-swift/scripts/pixdiff.py`: a "pixels unchanged"
+  check without a window on the screen. It compares the two builds' SwiftUI trees under the same software renderer,
+  not against the on-screen compositor.
 - `cacheDisplay(in:to:)` draws the page in software and spends most of its time in `CGContextEndTransparencyLayer`
   for every `compositingGroup()`; it is a rough upper bound for text drawing, not what CA does on screen. Use
   `CABackingStoreUpdate_` samples from a Time Profiler attached to the test host for the real redraw cost.

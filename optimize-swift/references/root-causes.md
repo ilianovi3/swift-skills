@@ -32,6 +32,16 @@ SwiftUI's own hover update (`EventBindingManager.enqueueHoverUpdateIfNeeded`). O
 buttons, chips, tooltips and hover zones this was 2.5 s of 7 s main-thread time per 20 s of scrolling, and it made
 lag depend on what passed under the cursor ("it lags on some parts of the screen").
 
+Scrolling is not the only trigger. SwiftUI re-runs the search at the end of **every render frame in which responders
+moved**: `ViewGraphRootValueUpdater.render` → `UpdateGroup.dispatchActions` → `enqueueHoverUpdateIfNeeded` →
+`NSHostingView.didRequestHoverUpdate` → `HitTestBindingResponder.bindEvent` → `ViewResponder.hitTest`. A 0.25 s
+"rows slide into place" animation after a filter change is 30 frames × one full search while the cursor rests over the
+list; in a recording of filter switching that chain was 1.75 s of 7.7 s main-thread time, and a single `mouseMoved`
+event over the same list cost 10–18 ms. Note the nesting: when the list lives in a `ScrollView`, the search descends
+through the platform `NSScrollView` (`PlatformViewResponderBase.containsGlobalPoints` → `NSScrollView.hitTest` →
+`NSClipView` → `PlatformGroupContainer.hitTest` → `PlatformHitTestingManager.hitTest`), so the `hover hit-test` bucket
+of `analyze_trace.py` sits *inside* the `SwiftUI render` bucket — do not add them up.
+
 **Confirm.** Bucket `hover hit-test` (`PlatformHitTestingManager.hitTest`) is large; `trace_callers.py callers` shows
 the three sources above; `inside` shows `HoverResponder.containsGlobalPoints` and friends. Scrolling with the cursor
 over the scroll bar is clearly smoother than over content.
@@ -42,7 +52,12 @@ frame contains the point, so SwiftUI walks one row instead of the whole screen. 
 a `VStack` (no laziness, see §7). In the production case: hit-testing 2.6 → 0.9 s, frames at 120 Hz 74 → 89 %.
 
 **Traps.**
-- A custom `contentShape` on a row does not stop the walk — SwiftUI still asks the children.
+- A custom `contentShape` on a row does not stop the walk — SwiftUI still asks the children
+  (`ContentShapeResponder.containsGlobalPoints` → `superValue`: 562 of 611 ms in one trace were spent below the shape).
+- A transparent cover on top (§8) does not make the search cheaper either: `ViewResponder.hitTest` collects every
+  responder under the point with weights, there is no early exit at the topmost hit. Measured offscreen with a cover
+  raised for the whole row animation: 61 → 58 ms per 0.25 s switch (≈ 78 searches), i.e. noise. The cover only keeps
+  rows from flipping their hover state.
 - Removing off-screen rows from hit-testing with `allowsHitTesting(visible)` + `onScrollVisibilityChange` cut the
   search by 40 % but every toggle redraws text (§8). Prefer the AppKit partition.
 - Separate hosting views do not share one layout pass: a change every row observes now re-lays out every row
@@ -131,7 +146,8 @@ block from `onScrollVisibilityChange`, invalidates and redraws that subtree.
 
 **Fix.** Leave the content alone; while scrolling, put a transparent cover over it that catches the cursor
 (pattern `ScrollCover`), and after the scroll ends post a synthetic `mouseMoved` at the current location so the row
-under a stationary cursor highlights again.
+under a stationary cursor highlights again. The cover changes *which* view wins the hit, not how much the search
+costs (§1 traps) — it is a tool against hover-state churn and the redraws it causes, not against hit-testing time.
 
 ## 9. Images in lists
 
