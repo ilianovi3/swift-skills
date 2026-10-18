@@ -79,6 +79,11 @@ extension View {
 `flex-wrap` of chips/metadata → a custom `Layout` that measures each child once (`makeCache`) and only breaks lines
 per width; center items vertically in the line when the CSS uses `items-center`/`align-middle`. For words of a
 paragraph, do not wrap views at all — use one `Text` (see the main skill).
+A toolbar of filters that wraps item by item leaves its last control alone on the next line at common window widths
+(1280). Fix it in the reference first: put the controls that belong together into one non-wrapping `div` inside the
+`flex-wrap` row, so the whole group moves down. Port the group as one `HStack` subview of the wrapping `Layout` — it is
+measured and placed as a single item, exactly like the `div`. Prefer this over squeezing labels to fit one line: a
+row that barely fits at the default text size breaks again at the largest one.
 
 ## Position, overlays, z-order
 - `relative` + `absolute top-[11px] left-0` → `.overlay(alignment: .topLeading) { x.padding(.top, 11) }`.
