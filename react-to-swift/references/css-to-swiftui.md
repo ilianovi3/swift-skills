@@ -202,4 +202,15 @@ What these become on macOS (AX probe of an offscreen `NSHostingView` via `AXUIEl
   audit reports it as "Element has no description". `.accessibilityLabel` on the `LazyVStack` names the list and
   leaves its rows alone.
 - Every `NSHostingView` (window root, a host per row) is an `AXGroup`/`AXHostingView` without `AXEnabled` — the
-  audit reports it "Disabled, no description"; `setAccessibilityElement(false)` on the host is ignored.
+  audit reports it "Disabled, no description"; `setAccessibilityElement(false)` on the host is ignored (the host
+  overrides `isAccessibilityElement()`), `setAccessibilityLabel` is honoured. A host you create: subclass
+  `NSHostingView` with `isAccessibilityElement() -> false` — the group disappears, its content joins the enclosing
+  group and `AXParent` of the children stays consistent (AppKit reports the unignored ancestor). A host inside an
+  `NSHostingController` (needed for `sizeThatFits(in:)`): `object_setClass(controller.view, ThatSubclass.self)`
+  after checking `type(of: view) == NSHostingView<Content>.self`. The window root SwiftUI creates can't be
+  subclassed — label it (`window.contentView?.setAccessibilityLabel(appName)`). Overriding the container's
+  `accessibilityChildren()` to flatten instead breaks `AXParent` and fails the audit's parent/child check.
+- `aria-hidden={cond}` must not become `.accessibilityHidden(cond)`: with `false` the modifier is not neutral, it
+  un-hides every descendant marked `.accessibilityHidden(true)` (a hidden window-drag background surfaced as a
+  full-width `AXUnknown` element, audit "Unknown role"). Use `.accessibilityHidden(true, isEnabled: cond)` (macOS 15,
+  iOS 18) — "unchanged" when disabled; a grep in lint for `accessibilityHidden([^t]` keeps it that way.
