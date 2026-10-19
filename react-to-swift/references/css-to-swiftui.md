@@ -188,3 +188,18 @@ row that barely fits at the default text size breaks again at the largest one.
 `aria-label` → `accessibilityLabel`; `role="heading"`/`h1–h6` → `.accessibilityAddTraits(.isHeader)`;
 `aria-selected` → `.isSelected`; `title` → `.help` (also a tooltip — mind density); decorative icons →
 `accessibilityHidden(true)`.
+
+What these become on macOS (AX probe of an offscreen `NSHostingView` via `AXUIElementCopyAttributeValue`):
+- `.isHeader` turns `Text` into role `AXHeading`: the string moves from `AXValue` to `AXDescription`. An editable title
+  with `.isHeader` keeps its text in `AXValue` and the placeholder becomes the label. XCUITest with Xcode 27
+  evaluates queries inside the app when it has an automation session, and that path did not match `AXHeading` — neither
+  `staticTexts["Title"]` nor `label == "Title"` — while the failure dump (a local snapshot) showed a StaticText with
+  that label. Setting `XCTDisableRemoteQueryEvaluation = YES` in the runner's `UserDefaults` (read on every query;
+  e.g. from the UI-test bundle's `NSPrincipalClass` init) sends queries down the local path
+  (`_matchingSnapshotsForLocallyEvaluatedQuery`, seen in the `XCUIElementQuery _executeWithError:` disassembly), which
+  filters the same kind of snapshot the dump shows.
+- `LazyVStack` is an `AXOpaqueProviderList` (role description "list", XCUITest type `.other`); the accessibility
+  audit reports it as "Element has no description". `.accessibilityLabel` on the `LazyVStack` names the list and
+  leaves its rows alone.
+- Every `NSHostingView` (window root, a host per row) is an `AXGroup`/`AXHostingView` without `AXEnabled` — the
+  audit reports it "Disabled, no description"; `setAccessibilityElement(false)` on the host is ignored.
