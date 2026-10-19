@@ -80,6 +80,23 @@ learned the hard way:
   what the eye waits for), and the time to quiet (two passes without layout). The second includes every running
   animation: a 0.2 s implicit animation on a tab's background keeps the hosting view laying out for 0.2 s, so "time to
   quiet" says nothing about the switch itself.
+- **A cheaper first pass is not a win until you know what it skipped.** Keep three DEBUG counters on the row (`body`
+  evaluations, `onAppear`, `onDisappear`), read them per pass, and print the second pass and the pass in which the first
+  row body ran. One variant's first pass fell 27 → 19 ms with `appeared` unchanged and `bodies` 6 → 0: SwiftUI had
+  returned the rows removed on the previous switch with their old graphs, because an extra state change landed in the
+  same update. That saves the rebuild only when the harness walks between the same two states; a tab the user opens for
+  the first time still builds its rows. Attribute a first-pass drop by signatures (next bullet) before believing it.
+- **Split a trace by pass.** Wrap every pump in an `os_signpost` interval (`OSSignposter.beginInterval("pass")`,
+  `endInterval` with the pass ordinal as the message: 1 = first pass with layout), record with
+  `xctrace record --instrument 'Time Profiler' --instrument os_signpost`, and bucket main-thread samples by the interval
+  they fall in (`scripts/signpost_split.py`: the `os-signpost` table exports as Begin/End *events* with `event-time`,
+  `signpost-name`, `subsystem` and the formatted message in `os-log-metadata`; cache the exports next to the trace — a
+  two-minute export per table otherwise). A 25 ms first pass is 25 samples; summed over 120 switches it is a real
+  profile, while in the whole trace it drowns under the 0.25 s animation that follows it.
+- **Search beside the rows too.** One `hitTest` at a point inside the scroll content but outside every row gives the cost
+  of the tree without the rows; the difference to a search on a row is the most any per-row fix (inert content, AppKit
+  partition) can save. On a list of ~15 rows it was 0.3 of 0.6 ms — the rest was the hosting view's own setup and the
+  descent through the platform `NSScrollView`, which no row change touches (§1 of `root-causes.md`).
 - The accessibility tree is not built for a window that is not on screen (`accessibilityChildren()` is empty), so
   in-process `accessibilityPerformPress` cannot drive controls there; drive the binding instead.
 - A synthetic `mouseMoved` sent with `window.sendEvent` does not reach SwiftUI's hover search in such a window

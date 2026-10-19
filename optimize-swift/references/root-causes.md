@@ -51,6 +51,17 @@ inside an AppKit stack (pattern `HostedStack` in `patterns.md`). `NSView.hitTest
 frame contains the point, so SwiftUI walks one row instead of the whole screen. Build all rows up front, exactly like
 a `VStack` (no laziness, see §7). In the production case: hit-testing 2.6 → 0.9 s, frames at 120 Hz 74 → 89 %.
 
+**When the partition does not pay.** Every hosting view on the path costs a fixed amount per search (its own
+`PlatformHitTestingManager.hitTest`, `ViewRendererHost.updateViewGraph`, the AppKit descent) — about 0.3 ms offscreen —
+so it only wins when the responders it fences off cost more than that: thousands of chips and words in a document, yes;
+a list of ~15 visible rows with a button, hover, drag, menu and a few tooltips each, no. Measured on such a list with one
+`NSHostingView` per lazy row (pooled hosts, rows keyed so an unchanged row is not re-rooted): a search *beside* the rows
+fell 0.6 → 0.3 ms (that is all the rows cost), a search *on* a row stayed 0.5–0.7 ms (the inner host ate the saving),
+and the first pass of a switch that inserts rows rose 27–31 → 46–52 ms — about 3.5 ms per new row even from a pool
+(its own graph, `NSHostingController.sizeThatFits`, two body evaluations), which would hit every row created while
+scrolling. Before partitioning, measure a search beside the rows: the gap between "on a row" and "beside the rows" is the
+most the partition can ever save.
+
 **Cheap partial fix.** Make the row's static content inert: wrap labels, icons and status dots in
 `Group { … }.allowsHitTesting(false)` (a `Group` inside a stack keeps the children as separate stack items, so layout and
 pixels stay the same), leave the row's `contentShape`, its button/drag gestures and anything with `.help` alone. One
@@ -65,8 +76,12 @@ partition removes.
 - A transparent cover on top (§8) does not make the search cheaper either: `ViewResponder.hitTest` collects every
   responder under the point with weights, there is no early exit at the topmost hit. Measured offscreen with a cover
   raised for the whole 0.25 s row animation (rows really moving): 28–34 → 27.5–32 ms of searches per switch (50–79
-  searches), one search at rest unchanged — noise. The cover only keeps rows from flipping their hover state. (It did
-  lower the first pass of switches that insert many rows, 26–29 → 19–21 ms, for a reason not yet traced.)
+  searches), one search at rest unchanged — noise. The cover only keeps rows from flipping their hover state. It also
+  seemed to lower the first pass of switches that insert many rows (26–29 → 19–21 ms); that was not the cover but the
+  state change that raised it (`onChange(of: rowKey) { motion += 1 }` in the same update as the row change) — with
+  that extra transaction SwiftUI brought back the rows removed on the previous switch with their old graphs (`onAppear`
+  fired for 6 rows, `body` for none; zero `_LazyLayout_Subviews.apply` samples in any later pass), which only helps a
+  harness that walks between the same two tabs. Rows new to the tree are built in the first pass either way.
 - Removing off-screen rows from hit-testing with `allowsHitTesting(visible)` + `onScrollVisibilityChange` cut the
   search by 40 % but every toggle redraws text (§8). Prefer the AppKit partition.
 - Separate hosting views do not share one layout pass: a change every row observes now re-lays out every row

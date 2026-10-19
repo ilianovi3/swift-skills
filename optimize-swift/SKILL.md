@@ -50,6 +50,9 @@ hits are visible in code. Note each suspect with file and line — it becomes a 
 ### 3. Attribute
 - For each big bucket, find who triggers it: `trace_callers.py callers <trace> '<signature>' 6`.
 - Find what it spends time on inside: `trace_callers.py inside <trace> '<signature>'`.
+- Offscreen harness traces: bucket samples by the harness's own `os_signpost` intervals (`signpost_split.py <trace>
+  --pass 1`) — the first pass of a state change by signatures, variant against variant, instead of the whole run where
+  it drowns under the animation that follows.
 - Split by time when lag "comes and goes": `analyze_trace.py --series`. If lag windows show an idle main thread,
   the cost is not your CPU work — check display renders vs app updates and scroll-event rate (see
   `references/measure.md`) and compare with the reference app before touching code.
@@ -65,7 +68,7 @@ hits are visible in code. Note each suspect with file and line — it becomes a 
 
 | Symptom in code | Trace signature | Native fix |
 | --- | --- | --- |
-| Long non-lazy screen with many buttons/hover zones (macOS) | `PlatformHitTestingManager.hitTest`, `HoverResponder`, `ContentShapeResponder`, `StyledTextResponder` | Partition into AppKit-hosted rows (`NSHostingView` per row) so AppKit prunes by frame; fewer responders per row |
+| Long non-lazy screen with many buttons/hover zones (macOS) | `PlatformHitTestingManager.hitTest`, `HoverResponder`, `ContentShapeResponder`, `StyledTextResponder` | Partition into AppKit-hosted rows (`NSHostingView` per row) so AppKit prunes by frame — only when the rows cost more than a hosting view's fixed ~0.3 ms per search (measure a search beside the rows first); fewer responders per row |
 | `.windowStyle(.hiddenTitleBar)` + content under the title strip | `_resetDragMargins`, `_regionForOpaqueDescendants` | `window.isMovable = false` + `WindowDragGesture` on your own title bars |
 | One `@Observable` value (hovered id, selection) read by every row | many `DynamicBody` updates per hover change | Per-item observable flags: a change touches two rows, not all |
 | Paragraph built as a view per word (flow layout for inline chips) | `LayoutEngineBox.sizeThatFits`, custom `Layout.sizeThatFits`, hit-test growth | One `Text`; decorate chips from `Text.LayoutKey` rects; reveal with `TextRenderer` |
