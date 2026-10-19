@@ -266,8 +266,8 @@ the same data invalidates every screen that reads it. Each of these turns a no-o
 
 **Confirm.** Build the screen offscreen and trigger a refresh that changes nothing (bump the revision, write the same
 profile, tick a clock): the "work until quiet" should be near zero. In the production case it was 50–290 ms on a
-document-like screen, 2.6–6 ms per list-like page for writing the same user profile back after every sync (settings
-saved to disk and every settings reader rebuilt), 13 ms per second of recording because the clock lived inside the
+document-like screen; writing the same user profile back after every sync (settings saved to disk, every settings
+reader rebuilt) cost 3–8 ms per list-like page and 44 ms on the document-like screen, 13 ms per second of recording because the clock lived inside the
 recorder's phase enum (`case recording(id, t, paused)`), so every reader of "is it recording?" re-rendered each second.
 
 **Fix.**
