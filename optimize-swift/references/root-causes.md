@@ -261,7 +261,10 @@ control's own animation (§1), not the graph update.
 **Why.** SwiftUI skips a subtree only when it can prove the inputs are equal. A screen value that carries closures
 (an action, a "patch" callback), an `AnyView` root handed to a hosting controller, or an environment value that is a
 struct of closures is never equal to its previous self, so every refresh of the parent rebuilds everything under it.
-`@Observable` notifies on every write, equal or not. And a global "data revision" bumped after a fetch that returned
+`@Observable` (Swift 6.2+ macro) skips a plain `set` of an equal `Equatable` value (`shouldNotifyObservers` →
+`lhs != rhs`; check with `swiftc -Xfrontend -dump-macro-expansions`), but every `_modify` write notifies, equal or not:
+a nested write (`state.settings.profile = p`), a subscript (`items[i] = x`, `dict[k] = v`), `+=`, a mutating method.
+Non-`Equatable` types notify on every write. And a global "data revision" bumped after a fetch that returned
 the same data invalidates every screen that reads it. Each of these turns a no-op into a full rebuild.
 
 **Confirm.** Build the screen offscreen and trigger a refresh that changes nothing (bump the revision, write the same
@@ -287,6 +290,12 @@ recorder's phase enum (`case recording(id, t, paused)`), so every reader of "is 
   each call site; same for "server answered the same": compare before bumping the shared revision (a 304 or an
   identical body is not a change).
 - Cache derived values whose inputs did not change (a document built from the screen's data: 3.4 ms per rebuild).
+- Two endpoints, two forms of one entity: a summary list (only my membership) and a detail (all members) written
+  to the same array on every sync flip the value summary → detail → summary — two *real* changes per refresh that no
+  equality guard catches. Apply the summary over the known detail (keep the detail-only fields, take the summary's
+  own) and guard the detail's subscript write: every reader of the current team 3–7 ms → 0.1–0.3 ms per sync.
+  Before adding an "only if changed" guard to a plain `set`, check it is not already the macro's — the guard that
+  matters sits before `_modify`.
 
 **Trap.** Keys must include everything the rows read that is not observed by the rows themselves. Observation inside a
 hosted row still works (each host tracks its own reads), so app-state objects read in rows need not be in the key;

@@ -118,6 +118,11 @@ learned the hard way:
   `root-causes.md`); call it once at rest for the cost of a single search. Offscreen the walk is cheaper than on
   screen (0.8 ms against 2–3 ms per frame and 10–18 ms per `mouseMoved` event in the same app: smaller window, no
   sidebar, one search instead of up to three), so compare A against B, not against the recording.
+- **Pin the scroller style** in every harness launch (`-AppleShowScrollBars WhenScrolling` as a launch argument; for a
+  hosted unit test — the scheme's test-action arguments). With the system default "automatic", a connected mouse
+  switches to legacy scrollers, which take 17 pt from the content of every `ScrollView` (probe: 299 vs 316 pt): text
+  wraps differently and stacks change height, so snapshots of one build differ between runs only because someone
+  plugged in a mouse receiver. Don't change the product's look for it — legacy scrollers with a mouse are native.
 - Write a PNG of `cacheDisplay`'s bitmap for each state (`bitmapImageRepForCachingDisplay` →
   `representation(using: .png)`) and diff A against B with `react-to-swift/scripts/pixdiff.py`: a "pixels unchanged"
   check without a window on the screen. It compares the two builds' SwiftUI trees under the same software renderer,

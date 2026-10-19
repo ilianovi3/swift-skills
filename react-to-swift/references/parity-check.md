@@ -39,6 +39,9 @@ Turbopack (Next 16) refuses a symlinked `node_modules` ("points out of the files
 launch argument, fixture), waits `LEAD` seconds, captures only its largest window (`screencapture -x -o -l <id>`,
 window id from `CGWindowListCopyWindowInfo`), quits the app. The window appears for a few seconds; tell the user.
 Give the app launch arguments for every state you need (open screen X scrolled to y, theme, text size, demo data).
+Pin overlay scrollers too (`-AppleShowScrollBars WhenScrolling`): headless Chrome hides scroll bars, while a Mac with a
+mouse connected gives every `ScrollView` legacy scrollers that take 17 pt of its width — lines wrap differently from
+the reference and between your own runs.
 
 ## Diff and measure
 `scripts/pixdiff.py A.png B.png [--crop x0,y0,x1,y1] [--out side.png] [--ink x0,y0,x1,y1:threshold]`
