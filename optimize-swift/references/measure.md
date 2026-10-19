@@ -76,6 +76,18 @@ learned the hard way:
   (keep that assertion as a test — it fails the moment the hook stops working).
 - Pump with a *positive* timeout (`RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))`): with
   a zero timeout CoreFoundation skips the "before waiting" observers, and that is where SwiftUI and CA commit.
+- **Busy is CPU, not `needsLayout`.** SwiftUI often applies an update inside the run-loop observer and leaves no
+  `needsLayout` behind, so a rebuild can look like "0 ms, nothing happened". Read the main thread's CPU time around
+  each pump (`clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)`): a turn with > 0.5 ms of CPU is busy; quiet is two
+  idle turns. Report "work until quiet" as CPU time — the 2 ms waits of idle turns are not work.
+- **Snapshots after a calm period.** Text reveals, pin drops and animated scrolls finish at different moments in a
+  fast and a slow build; pump ~2 s before writing the PNG, or the diff shows animation frames instead of differences.
+- **Deferred work has no frames offscreen.** A view that finishes work per display-link frame never does it in a
+  window that is not on screen; trigger completion explicitly (scroll the clip view 1 pt and back) and time that.
+- **A/B as two working copies.** Keep the baseline in its own checkout with its own derived data, apply each kept
+  change to it after the comparison, and run A and B back to back: no rebuild between the two runs, and the next
+  experiment compares against the new baseline. Other builds on the machine move medians by 10–20 %; read
+  differences smaller than that only if they repeat across runs.
 - Measure two numbers: the first pass that had `needsLayout` after the change (the synchronous graph update + layout —
   what the eye waits for), and the time to quiet (two passes without layout). The second includes every running
   animation: a 0.2 s implicit animation on a tab's background keeps the hosting view laying out for 0.2 s, so "time to

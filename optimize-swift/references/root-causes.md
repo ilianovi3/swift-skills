@@ -19,6 +19,7 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 12. When the main thread is idle but frames are slow
 13. Things that look guilty but were not
 14. A non-lazy container inside a lazy stack
+15. Rebuilds the framework cannot skip: unchanged data, uncomparable inputs, equal writes
 
 ---
 
@@ -193,7 +194,12 @@ new layout, which sets the fractional frame again — 150 frame changes per seco
 - `MenuBarExtra` with live SwiftUI content rebuilds via KVO of status-bar buttons between frames (~15 % of the main
   thread on one screen). Use `NSStatusItem` with a menu built when it opens.
 - Icon paths parsed from strings on every draw (5 % in Debug, 1–2 % in Release): parse once, cache.
-- Localized-bundle lookups per string call: cache the bundle.
+- Localized-bundle lookups per string call: cache the bundle. Measured (Release, M-series): `String(localized:
+  LocalizedStringResource(key, locale:, bundle: .atURL(bundleURL)))` costs ~1.2 ms per call — it resolves the bundle and
+  the language each time; a plural label in a row or an "unnamed speaker" default in a screen-wide value paid it on
+  every rebuild. Build `<lang>.lproj` sub-bundles once (`Bundle(path: bundle.path(forResource: lang, ofType:
+  "lproj"))`) and call `String(localized: key, bundle: langBundle, locale:)`: 20 µs, same strings and plural variants
+  (the language is chosen by the bundle; `locale:` only formats arguments).
 - Derived lists (sort/filter) computed in `body`: compute when inputs change.
 - Client-side search on every keystroke: the cost is the no-match case, every string scanned to the end. Measured on
   500 strings × 2.5 KB (Cyrillic, `-O`, M-series): `localizedStandardContains` 18.6 ms per pass;
@@ -221,6 +227,13 @@ Fonts (already cached), mention parsing (< 1 %), database reads on the main thre
 blinking record dot, system checkboxes, a 300 ms hover delay idea (the cost is the search, not the reaction).
 Measure before rewriting any of these.
 
+Measured and rejected later (offscreen harness, Release): a dictionary instead of a linear search over ~20 people
+(0.5 µs per lookup either way); a cache of dynamic colors (0.5 µs per color); `.equatable()` per node of a document
+sheet plus one `Text` per paragraph with inline chips — the rebuild of the sheet got *slower* (34 → 48 ms; equality
+checks and bindings per node cost more than the bodies they skip when the whole sheet re-renders anyway); a one-line
+`Text` framed to the CSS line height instead of `lineHeight(.exact)` — no measurable gain offscreen and 2–5 % of the
+pixels moved (baselines shift by a fraction of a point).
+
 ## 14. A non-lazy container inside a lazy stack
 
 **Symptom.** A grouped list (sections by day, pinned headers) has many more rows built than visible: software raster
@@ -242,3 +255,39 @@ software raster of built rows fell 98–112 → 73–79 ms on 500 rows. So this 
 it caps the number of built rows, which is what hover hit-testing and per-row platform views scale with. If a filter
 switch still feels slow after it, record with the cursor: the suspect is hover re-evaluated on every frame of the
 control's own animation (§1), not the graph update.
+
+## 15. Rebuilds the framework cannot skip: unchanged data, uncomparable inputs, equal writes
+
+**Why.** SwiftUI skips a subtree only when it can prove the inputs are equal. A screen value that carries closures
+(an action, a "patch" callback), an `AnyView` root handed to a hosting controller, or an environment value that is a
+struct of closures is never equal to its previous self, so every refresh of the parent rebuilds everything under it.
+`@Observable` notifies on every write, equal or not. And a global "data revision" bumped after a fetch that returned
+the same data invalidates every screen that reads it. Each of these turns a no-op into a full rebuild.
+
+**Confirm.** Build the screen offscreen and trigger a refresh that changes nothing (bump the revision, write the same
+profile, tick a clock): the "work until quiet" should be near zero. In the production case it was 50–290 ms on a
+document-like screen, 2.6–6 ms per list-like page for writing the same user profile back after every sync (settings
+saved to disk and every settings reader rebuilt), 13 ms per second of recording because the clock lived inside the
+recorder's phase enum (`case recording(id, t, paused)`), so every reader of "is it recording?" re-rendered each second.
+
+**Fix.**
+- Hosted rows (patterns.md, `HostedStack`): give the stack a revision key (the content the rows render, without the
+  callbacks) and compare the environment the rows depend on (scale, theme, locale, the few custom entries) as a value;
+  re-set a row's root only when either changed. Rebuild with the same data 287 → 46 ms, a click that changes a
+  sidebar-only value 284 → 36 ms (the rows no longer re-render).
+- Environment values with closures: make them `Equatable` by a revision of the data they were built from; build the
+  expensive parts (a name-matching regex, parsed texts) once per revision in a shared memo.
+- Move fast-changing UI state out of the screen's `@State` into a small `@Observable` with per-item flags (§3): the
+  "open moment" and search text of a side panel lived in the screen's state, so a click on a timestamp rebuilt the
+  whole screen (50–68 ms); with flags it rebuilds two rows (2 ms).
+- Split values that change at different rates: the phase of a recording (start/pause/stop) and its clock (every second)
+  as separate properties; the timer label, the progress bar and the pause button read the clock themselves.
+  13–14 → 4.5 ms per tick across a list, the recording screen and another open screen.
+- Guard writes where all callers route (`set { if store.profile != newValue { store.profile = newValue } }`), not at
+  each call site; same for "server answered the same": compare before bumping the shared revision (a 304 or an
+  identical body is not a change).
+- Cache derived values whose inputs did not change (a document built from the screen's data: 3.4 ms per rebuild).
+
+**Trap.** Keys must include everything the rows read that is not observed by the rows themselves. Observation inside a
+hosted row still works (each host tracks its own reads), so app-state objects read in rows need not be in the key;
+plain values passed down (a moment, a fetch state, a language) must be.

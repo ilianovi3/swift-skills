@@ -80,6 +80,9 @@ hits are visible in code. Note each suspect with file and line — it becomes a 
 | Floating panel resized to fractional sizes | layout loop, `setFrame` storms | Apply frame changes only beyond a 1 pt threshold |
 | `MenuBarExtra` with live content | KVO rebuilds of the status item between frames | `NSStatusItem` with a menu built on open |
 | Shapes/icons parsed per draw | path parsing in hot frames | Parse once, cache static paths |
+| Screen rebuilt with the same data (server answered the same, a hosted row's root re-set, an env value with closures) | the same `body` work on every refresh; cost scales with the screen, not with the change | Equality the framework can see: a revision key on hosted rows, `Equatable` env values, no global "revision" bump for unchanged data (`references/root-causes.md` §15) |
+| `@Observable` written with an equal value; a clock inside a phase enum | every reader of the property re-renders on each write / each second | Guard at the setter all callers route through; split the fast-changing value into its own property (§15) |
+| Per-call `LocalizedStringResource(locale:bundle:)` | ~1 ms per string in `body` | Cache the `<lang>.lproj` bundle, `String(localized:bundle:locale:)` (§11) |
 
 ## Output
 
