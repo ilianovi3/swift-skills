@@ -88,7 +88,7 @@ uniform rows. Notes: `NSHostingView` has no `sizeThatFits(in:)` — use `NSHosti
 `updateNSView`, so any refresh of the screen rebuilds and re-measures every row, and a live-resize step measures every
 row at the new width. Measured on a 40-row document (Release, offscreen harness): open 1.75 s, rebuild with the same
 data 287 ms, a resize step 187 ms. Three changes, same pixels:
-- `DMHostedStack(key:rows:)` with `Row(id:view)`: rows keep their hosting controller by id; the root is re-set only
+- `HostedStack(key:rows:)` with `Row(id:view)`: rows keep their hosting controller by id; the root is re-set only
   when `key` (a `Hashable` revision of what the rows render — data, edits, language; not callbacks) or a snapshot of the
   environment the rows depend on (scale, color scheme, contrast, locale, reduce motion, display scale, layout
   direction and the app's own entries, compared as an `Equatable` struct) changed. Rebuild 287 → 46 ms.
