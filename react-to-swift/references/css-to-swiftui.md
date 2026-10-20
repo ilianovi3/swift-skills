@@ -72,6 +72,8 @@ extension View {
 | `shrink-0` | `.fixedSize(horizontal: true, vertical: false)`; on a kit button that can also be `w-full` (label with `frame(maxWidth: .infinity)`), `fixedSize` kills the stretch — use a one-child `Layout` whose width is `max(proposal, ideal)` |
 | `whitespace-nowrap shrink-0` button next to links in `flex gap-5` | without the rule above `HStack` gives the button less than its width and `lineLimit(1)` cuts the label to "Contin…"; with it the button keeps its width and the links wrap, as in the browser |
 | `grid-cols-[minmax(0,1fr)_auto]` | `HStack { flexible.frame(maxWidth: .infinity) ; control.fixedSize() }` — the auto column sizes to content; without `fixedSize` HStack splits space and truncates the control |
+| `max-w-[320px]` on a control followed by a chip (`flex flex-wrap`) | not `.frame(maxWidth: 320)` inside an `HStack`: the frame takes up to 320 of what the stack offers and the chip lands far from a short control; put the row in a wrapping `Layout` that measures children at their ideal size and places them with that size as the proposal — the frame then caps a long label (truncates) and stays at content width for a short one |
+| A link inside a sentence (`<p><a>Connect X</a>, to do Y</p>`) | one `Text`: `Text(AttributedString with .link) .underline(color:) + Text(", to do Y")`, color through `.tint`, click via `.environment(\.openURL, OpenURLAction { … .handled })`; a `Button` and a `Text` side by side in an `HStack` split into two columns in a narrow container. native: no `hover:` on the link |
 | `ml-auto` on a wrapped item | Push to trailing edge in a custom `Layout` or `ViewThatFits` |
 | `space-y-*` on a list | spacing on the stack, not padding on each child (`.padding` on a `Group` applies to every child) |
 
