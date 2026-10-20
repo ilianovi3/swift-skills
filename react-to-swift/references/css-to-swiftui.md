@@ -218,15 +218,18 @@ row that barely fits at the default text size breaks again at the largest one.
   character per chip gives the web behavior for free: the caret never lands inside, ⌫ deletes it whole, undo restores
   it. Serialize by walking `.attachment` runs. Vertical position: `cellBaselineOffset` = half the x-height minus half
   the image height (`vertical-align: middle`). CSS line height: min = max line height and a positive `baselineOffset`
-  of the half-leading (TextKit 1 puts the extra above the glyphs). Give the text view its own `UndoManager`
+  of the bottom part of the Blink half-leading (TextKit 1 puts the extra above the glyphs, baseline at
+  `L − round(descent)`; typography.md). Give the text view its own `UndoManager`
   (`undoManager(for:)`) so the field's history dies with it; route clipboard and drag through
   `writablePasteboardTypes`/`writeSelection(to:type:)` and `readablePasteboardTypes`/`readSelection(from:type:)`
   (plain text with names outward, a private markup type between fields); handle ↩ ⇥ ↑↓ ⎋ in
   `textView(_:doCommandBy:)` (Esc arrives as `cancelOperation:` or `complete:`). A typeahead above the caret is a
   SwiftUI overlay positioned from `boundingRect(forGlyphRange:)`, not an `NSPopover` (a popover can take key focus and
   break typing); suppress it while `hasMarkedText()` (IME), flip it below when `visibleRect` has no room above.
-- Text fields don't take line height: center the text with padding (`(lineHeight − natural) / 2`) and
-  `baselineOffset(0)`, otherwise text and placeholder sit ~2 pt low.
+- Text fields don't take line height: pad the field (its natural height is Blink's content area) with the Blink
+  half-leading — `floor((L − round(A) − round(D)) / 2)` above, the rest below — and `baselineOffset(0)`, otherwise
+  text and placeholder sit ~2 pt low; an unrounded `(L − natural) / 2` leaves them 0.5 pt off. A fixed-height input
+  (`h-8`) centres the content area and snaps the baseline to a whole px (typography.md).
 - `text-center tracking-[0.3em]` input (one-time code) can't be a SwiftUI `TextField` on macOS: the `prompt` ignores
   `multilineTextAlignment` (placeholder stays at the leading edge while the empty caret sits in the middle) and
   `.kerning`/`.tracking` reach only the prompt, never the typed text. Wrap `NSTextField`: one attribute set (font,
