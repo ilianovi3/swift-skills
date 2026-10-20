@@ -137,6 +137,10 @@ func applicationWillFinishLaunching(_: Notification) {
   line. Accept and list it as a native difference rather than fighting the line breaker.
 - `line-clamp-N` → `lineLimit(N)`; `truncate` → `lineLimit(1)` + `truncationMode(.tail)`; `whitespace-nowrap` on an
   inline chip → no-break spaces (U+00A0) inside it.
+- `text-wrap: balance` (`text-balance`) has no SwiftUI equivalent: `Text` wraps greedily, so a balanced 2-line heading
+  breaks at another word. A `{'\u00a0'}` the reference put in to keep a dash off the line start goes into the Swift
+  literal and the String Catalog key as the character itself, not as `\u{00A0}`: the escape is different source text,
+  and tools that match literals against catalog keys (l10n lint) see a missing key.
 
 ## Character classes and graphemes (text logic)
 Ported text logic (initials, "word at the caret", mention suggestions, counters) must agree with the reference on
