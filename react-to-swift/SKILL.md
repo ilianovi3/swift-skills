@@ -57,7 +57,7 @@ Use `references/css-to-swiftui.md` (box model, flex/grid, borders, shadows, colo
 pixel errors, in order of frequency:
 1. CSS borders sit inside the border box: use `strokeBorder`, not `stroke`, and add the border to padding math.
 2. `border-t/b` occupies its own pixel row: the rule adds height, it is not drawn over padding.
-3. `line-height` is CSS half-leading: glyphs centered in `size × leading`; SwiftUI puts extra space below.
+3. `line-height` is CSS half-leading with Blink rounding (whole-px ascent/descent, floored top half, baseline on a whole CSS px in a box): glyphs near the middle of `size × leading`; SwiftUI puts extra space below and snaps to device pixels (`typography.md`).
 4. `Font.custom(_:size:)` follows a text style and adds its tracking: use `fixedSize`.
 5. Group opacity (`opacity-40` on a button) needs `compositingGroup()`, otherwise layers fade separately.
 6. Box shadows with negative spread are not `shadow(radius:)`: blur a shrunk shape instead.

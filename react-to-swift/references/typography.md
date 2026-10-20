@@ -39,21 +39,38 @@ a running build, list its open files: a registered font that has been drawn is m
   font's range) and cache per size and weight.
 
 ## CSS line height (half-leading)
-CSS puts glyphs in the middle of a line box `size × line-height`, splitting the extra equally above and below.
-SwiftUI adds extra space below the glyphs. Model it explicitly:
+CSS puts glyphs in the middle of a line box `size × line-height`, splitting the extra above and below — but Blink
+rounds: the font's ascent and descent are rounded to whole px each, and the top half of the extra is floored to a
+whole px (`CalculateLeadingSpace`). So the baseline sits `floor((L − round(A) − round(D)) / 2) + round(A)` below the
+line top, an integer: Geist 13 px in a 19.5 line → 1 + 13 = 14, not 1.3 + 13.065; 12.5 in 18.75 → 0 + 13, not
+1.25 + 12.56. SwiftUI with an exact line height puts the extra below the glyphs, places the line top and the ascent on
+the device-pixel grid and rounds a `baselineOffset` *up* to the next pixel. Model both:
 ```swift
-let px = size * scale
-let natural = (ascent + descent + leading) / pointSize   // from CTFont, per face
-let half = px * (lineHeight - natural) / 2
+let px = size * scale, line = px * lineHeight, s = displayScale
+func dev(_ v: CGFloat) -> CGFloat { (v * s).rounded() / s }
+let a = ascent * px, d = descent * px                       // CTFont ratios per face; natural = ascent + descent + leading
+let inLine = ((line - a.rounded() - d.rounded()) / 2).rounded(.down) + a.rounded()   // Blink baseline from line top
+var drop = dev(inLine - dev(a))                              // already on the grid: the round-up keeps it
+if let box {                                                 // single line centred in an `h-* items-center` box
+    // Chromium on macOS snaps the final baseline to a whole CSS px (a point, not a device pixel) from the box top.
+    drop = dev(((box - line) / 2 + inLine).rounded() - dev((box - dev(line)) / 2) - dev(a))
+}
 if #available(macOS 26, iOS 26, *) {
     text.font(font)
-        .lineHeight(.exact(points: px * lineHeight))
-        .baselineOffset(-max(half, 0))                   // move glyphs down to the middle
-        .padding(.top, min(half, 0)).padding(.bottom, -min(half, 0))   // line tighter than natural: trim
+        .lineHeight(.exact(points: line))
+        .baselineOffset(-max(drop, 0))                        // move glyphs down to the Blink baseline
+        .padding(.top, min(drop, 0)).padding(.bottom, -min(drop, 0))   // line tighter than the font: trim
 } else {
-    text.font(font).lineSpacing(max(0, 2 * half))         // only inter-line spacing; single lines keep natural height
+    text.font(font).lineSpacing(max(0, line - px * natural))  // only inter-line spacing; single lines keep natural height
 }
 ```
+Unrounded half-leading put a 13 px button label 1 pt (2 device px) below the reference and a 12.5 px one 0.5 pt; with
+the model above both match to 0.01 pt at 1× and 1.2× text size. The `box` variant belongs in the button/chip
+primitive that knows its height (`h-8` → 32 × scale); free text gets only the in-line part.
+- Measuring the reference: Chromium on macOS (no zoom-for-DSF) snaps a box at a fractional page position to a whole
+  CSS px but rounds its text separately, so the label of the same button moves ±0.5 pt with its page position. Clone
+  the element onto an overlay at a whole CSS px and compare ink by coverage-weighted centroid (sub-pixel, AA-proof),
+  not by first/last ink rows.
 - A run with its own `baselineOffset` inside a concatenated `Text` replaces the paragraph's offset instead of
   adding to it — account for it when mixing sizes.
 - Exact line height takes the TextKit 2 path and rasterizes text on the CPU. Fine for paragraphs and headings; in
