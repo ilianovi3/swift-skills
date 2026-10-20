@@ -23,7 +23,11 @@ multiplier if the app has one (`value * k`), except hairlines (1 px borders stay
   inside 14.5 px text = 12.
 - `clamp(a, Xvw, b)` resolves at the reference viewport width (e.g. 1280 → 2.6vw = 33.28 px). Pick the reference
   width you compare against and use that value, or recompute from the window width with `onGeometryChange` if the
-  native window really resizes the same way.
+  native window really resizes the same way. A text-size setting done with `zoom` on the root scales `vw` too
+  (Chromium, measured: window 1000, zoom 1.2 → `clamp(1.75rem, 2.6vw, 2.75rem)` = 33.6 = 28 × 1.2; 2.6vw = 31.2):
+  native size = scale × clamp(lo, X × window width in pt, hi). One observable value per window, written by the root's
+  `onGeometryChange` and read only by the headings' font modifier, so resizing re-renders the headings, not the
+  screens — and every heading that uses the clamp reads it, not just the screen where the drift was noticed.
 - `cqw` (container query width) → fraction of the container's width without its border: `max(42cqw, 6.5px)` of a
   24 px avatar with a 1 px border = `max((24 − 2) × 0.42, 6.5)`.
 - Read `getComputedStyle` in a headless browser when in doubt; it removes all of the above guesswork.

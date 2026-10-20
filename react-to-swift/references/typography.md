@@ -102,6 +102,13 @@ selects, avatars and fields all match to ≤ 0.13 pt at 1× and 1.2× text size.
 - Exact line height takes the TextKit 2 path and rasterizes text on the CPU. Fine for paragraphs and headings; in
   long hot lists prefer single-line labels with a fixed frame height and the natural font line.
 - `TextField` ignores line height: use the font without line height and pad its content area to the CSS line with the Blink half-leading (above).
+  That only fixes a single line. On macOS `TextField(axis: .vertical)` is an `NSTextField` and ignores both
+  `.lineHeight` and `.lineSpacing` (probe, macOS 27): wrapped lines step at the font's own height — 16 px / 26 line
+  steps 21, serif 28 / 1.08 steps 38 instead of 30.5. A wrapping editable span with a CSS line height needs a TextKit
+  view (`NSTextView` with min = max line height and a `baselineOffset` lift — exact for line ≥ font; for line < font
+  check the lift, it came out 4 pt high). `TextEditor` honours `.lineHeight` for the step but sits its first line
+  2–3 pt high and drifts on serif at large sizes — not a drop-in either. Test the step with two hard lines against a
+  `Text` of the same font: first-line middle, step and height.
 
 ## Tracking
 `tracking-[-0.01em]` → `.kerning(-0.01 * fontSize * scale)`; `tracking-wide` = 0.025em. Headings with negative
