@@ -18,6 +18,15 @@ Bundle the exact font files the web uses (full upstream releases, not Google sub
 Cyrillic, `№`, curly quotes, narrow no-break space). Register at launch with
 `CTFontManagerRegisterFontsForURL(url, .process, nil)`. Address fonts by family name.
 
+Find the files in a SwiftPM package with `Bundle.module`, not `#bundle`. The macro means `Bundle.module` only while
+the compiler condition `SWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE` is set; without it, it silently returns the main
+bundle — no font files found, nothing registered, every custom face falls back to the system one (`Font.custom` to
+SF, a `CTFontDescriptor` to Helvetica) and nothing fails. The condition vanishes when a build sets
+`SWIFT_ACTIVE_COMPILATION_CONDITIONS` on the `xcodebuild` command line (`=DEBUG` for a Release-with-debug-data
+profiling build): a command-line setting replaces the value in every target, packages included (`SWIFT_PACKAGE`
+goes too, and dependencies switch to their non-SwiftPM code paths). Append instead: `'$(inherited) DEBUG'`. To check
+a running build, list its open files: a registered font that has been drawn is mapped (`lsof -p <pid> | grep -i ttf`).
+
 ## Fixed size, no style tracking
 `Font.custom(name, size:)` is tied to the `.body` text style and applies its tracking: a Geist 14.5 line came out
 ~3.5 % wider than in Chrome. Use `Font.custom(name, fixedSize:)` — letter spacing then matches CSS and `CTLine`.

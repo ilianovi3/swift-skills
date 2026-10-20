@@ -42,6 +42,7 @@ reference width (Playwright or a headless DevTools MCP — never a visible windo
 | Images | ImageIO thumbnails at display size + cache, not `AsyncImage` in lists |
 | `position: sticky` | `safeAreaInset` / pinned section headers; a `sticky bottom-0` action bar ending a scroll column — the bar outside the `ScrollView`, the `ScrollView` capped at its content height (`references/css-to-swiftui.md`) |
 | Custom title bar region (macOS) | `window.isMovable = false` + `WindowDragGesture` on your bars |
+| Traffic lights drawn inside a taller bar (macOS) | the real `standardWindowButton`s moved, not drawn: titlebar container (`close.superview.superview`) as tall as the bar, buttons centered in it, group centered on the reference's slot; AppKit resets both on resize, title change and other relayouts — re-place on their `frameDidChange`, `didResize`, `title` KVO (zoom moves last, without a notification) plus one async pass; skip in full screen and with a tab bar; measure the button step before the first move (`css-to-swiftui.md`) |
 
 Native chrome may differ (window, system dialogs, scroll bars, popover arrows); list each difference explicitly.
 

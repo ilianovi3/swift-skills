@@ -104,6 +104,19 @@ row that barely fits at the default text size breaks again at the largest one.
   `Layout` — a flow that measures items `.unspecified` and re-proposes the line width only to an item wider than the line
   lets `ViewThatFits` pick the compact row exactly when the full one does not fit, no threshold needed. Put `.help` and
   an accessibility label only on the icon-only variant.
+- Window traffic lights the reference draws in its own bar (three 12 px dots, `h-12 items-center px-4`) are the real
+  window buttons natively, moved into the bar — never fake dots (hover glyphs, ⌥-zoom, accessibility). With a hidden
+  title bar AppKit lays them out in a 28–32 pt container at the top (macOS 26: 14 pt buttons, step 23, first at x 9);
+  make the container (`close.superview.superview`, not flipped) as tall as the bar and center the buttons in it,
+  centering the group on the reference's dot group (the system size differs; mark it native). AppKit puts both back on
+  resize, title change, appearance change, full-screen exit: observe `frameDidChange` of the container, its titlebar
+  view and the three buttons and re-place synchronously (no frame at the old spot), plus `didResize` and `title` KVO —
+  after a title change the zoom button moves last without posting a notification — and one coalesced async pass for
+  the rest. Measure the button step once before the first move (mid-relayout frames give a wrong step), skip while
+  `styleMask` has `.fullScreen` or the tab bar is visible. Shifting only the container's origin does not work: AppKit
+  compensates the buttons inside it. Clicks in empty parts of a taller transparent container still reach the content.
+  Test it in an unshown `NSWindow` with the same style mask (`.titled .closable .miniaturizable .resizable
+  .fullSizeContentView`, transparent title bar): read button frames after `setFrame` and a `title` change.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
 - `overflow: hidden` clips painting *and* hit testing; `.clipped()` / `.clipShape` clip painting only. Content laid out
   past its frame (a shimmer band 4× wide moved by `offset`, a scaled-to-fill image) still catches clicks outside the
