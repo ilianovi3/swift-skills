@@ -119,8 +119,7 @@ row that barely fits at the default text size breaks again at the largest one.
   .fullSizeContentView`, transparent title bar): read button frames after `setFrame` and a `title` change. The taller
   container raises the top safe area — the hosted root needs the app's `.ignoresSafeArea(.container, edges: .top)` or
   its content slides under the bar; measure the text's line by ink rows of `cacheDisplay` (the accessibility tree of
-  an unshown window is empty), and snapshot the theme frame (`contentView.superview`) whole — caching a sub-rect of it
-  shifts the flipped hosting view inside.
+  an unshown window is empty); snapshot the theme frame (`contentView.superview`) to get the buttons in the picture.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
 - `overflow: hidden` clips painting *and* hit testing; `.clipped()` / `.clipShape` clip painting only. Content laid out
   past its frame (a shimmer band 4× wide moved by `offset`, a scaled-to-fill image) still catches clicks outside the
