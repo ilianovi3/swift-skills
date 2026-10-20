@@ -20,6 +20,7 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 13. Things that look guilty but were not
 14. A non-lazy container inside a lazy stack
 15. Rebuilds the framework cannot skip: unchanged data, uncomparable inputs, equal writes
+16. Core ML first load after every install or update
 
 ---
 
@@ -300,3 +301,27 @@ recorder's phase enum (`case recording(id, t, paused)`), so every reader of "is 
 **Trap.** Keys must include everything the rows read that is not observed by the rows themselves. Observation inside a
 hosted row still works (each host tracks its own reads), so app-state objects read in rows need not be in the key;
 plain values passed down (a moment, a fetch state, a language) must be.
+
+## 16. Core ML first load after every install or update
+
+**Why.** Loading an `.mlmodelc` for the Neural Engine makes the system specialize (compile) it once and cache the
+result in the app's caches (`Caches/<bundle id>/com.apple.e5rt.e5bundlecache/<OS build>/<model hash>`). The cache is
+tied to the binary's code signature: a new build, an installed update or a macOS update makes the next load cold.
+A speech model measured on M3 Max: Parakeet 0.6B 16–18 s cold vs 0.1 s from the cache, Whisper large-v3 80 s vs 1.6 s;
+peak memory 480–500 MB cold vs 40–120 MB warm. An app that loads the model lazily on first use pays this on the first
+action after each update — and if the UI shows that wait as "processing…", people read it as a slow feature.
+
+**Confirm.** Copy the binary (inode change only) — the load stays warm; re-sign it (`codesign -f -s -`) — the load is
+cold again. Watch the cache folder's entries get rewritten at the moment of the slow first use.
+
+**Fix.**
+- Load in the background as soon as the model is on disk: at launch, after the download finishes, when the user picks
+  another model — at utility priority, not on the first action. Keep it loaded (warm residency is small: weights are
+  memory-mapped); unload on memory pressure if that matters.
+- Make the load single-flight: an actor is reentrant, so every caller that arrives while `load()` awaits starts its own
+  load unless the actor stores the running `Task` and makes later callers await it (reset it on failure so a retry runs).
+- When the user still has to wait, show a distinct state ("loading the model, usually up to 30 s"), not the generic
+  "processing"; downloading (with progress) and loading are different states.
+
+**Trap.** A harness or unit test that loads the same model twice in one build sees only the warm number; measure cold
+with a fresh binary name (new cache folder) or a re-signed binary.
