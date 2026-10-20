@@ -105,6 +105,12 @@ row that barely fits at the default text size breaks again at the largest one.
   lets `ViewThatFits` pick the compact row exactly when the full one does not fit, no threshold needed. Put `.help` and
   an accessibility label only on the icon-only variant.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
+- `overflow: hidden` clips painting *and* hit testing; `.clipped()` / `.clipShape` clip painting only. Content laid out
+  past its frame (a shimmer band 4× wide moved by `offset`, a scaled-to-fill image) still catches clicks outside the
+  visible box and silently covers the neighbours drawn before it — a back button next to a loading skeleton stopped
+  responding. Decorative animated fills get `.allowsHitTesting(false)`; content that must stay tappable gets
+  `.contentShape(Rectangle())` after the clip. Unit tests cannot catch it: synthetic mouse events to an unshown window
+  reach no SwiftUI button at all — check by clicking in the running app.
 
 ## Colors
 - Port tokens as named colors with light/dark values; never hardcode a hex in a screen.
