@@ -116,7 +116,11 @@ row that barely fits at the default text size breaks again at the largest one.
   `styleMask` has `.fullScreen` or the tab bar is visible. Shifting only the container's origin does not work: AppKit
   compensates the buttons inside it. Clicks in empty parts of a taller transparent container still reach the content.
   Test it in an unshown `NSWindow` with the same style mask (`.titled .closable .miniaturizable .resizable
-  .fullSizeContentView`, transparent title bar): read button frames after `setFrame` and a `title` change.
+  .fullSizeContentView`, transparent title bar): read button frames after `setFrame` and a `title` change. The taller
+  container raises the top safe area — the hosted root needs the app's `.ignoresSafeArea(.container, edges: .top)` or
+  its content slides under the bar; measure the text's line by ink rows of `cacheDisplay` (the accessibility tree of
+  an unshown window is empty), and snapshot the theme frame (`contentView.superview`) whole — caching a sub-rect of it
+  shifts the flipped hosting view inside.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
 - `overflow: hidden` clips painting *and* hit testing; `.clipped()` / `.clipShape` clip painting only. Content laid out
   past its frame (a shimmer band 4× wide moved by `offset`, a scaled-to-fill image) still catches clicks outside the
