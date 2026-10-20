@@ -154,6 +154,11 @@ row that barely fits at the default text size breaks again at the largest one.
 - Hover/pressed backgrounds animate with the reference's transition duration; on dense repeated rows prefer state
   per item to avoid re-rendering all rows (see `optimize-swift`).
 - Focus rings: native focus ring or the reference's ring; decide once per kit component.
+- A grid that is one focus stop (arrows move the selection, `.focusable()` + `.focusEffectDisabled()` on the grid) has no
+  visible focus at all: draw the reference's `:focus-visible` ring on the selected cell while the grid is focused *from
+  the keyboard* (arrow press, or `NSApp.currentEvent?.type == .keyDown` when focus arrives), drop it on click. Draw it
+  inside the cell (`strokeBorder` without the negative padding of `outline-offset`): outside, later siblings and the
+  scroll view's clip cover it.
 
 ## Motion
 - `transition-[x] duration-200 ease-out` → `.animation(.easeOut(duration: 0.2), value: x)`.
