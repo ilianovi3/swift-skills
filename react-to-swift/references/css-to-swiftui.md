@@ -90,6 +90,20 @@ row that barely fits at the default text size breaks again at the largest one.
 - `inset-0` backgrounds → `.background { … }` (sized to the view, not its children).
 - `z-*` → `zIndex` among siblings, or overlay order.
 - `sticky top-0` → pinned section header / `safeAreaInset(edge: .top)`.
+- `sticky bottom-0` action bar as the last child of a scroll column (a form whose buttons must stay in the first
+  screen; short content — the bar right under it, long — at the bottom of the column): its position never depends on
+  the scroll offset, so do not port it as a sticky offset inside the scroll content. Put the bar *outside* the
+  `ScrollView` in a top-aligned `VStack`, and give the `ScrollView` `.frame(maxHeight: contentHeight)` measured with
+  `onGeometryChange` on the content (start at `.infinity`; keep the state in a tiny wrapper view so a height change
+  re-evaluates only it). Nothing runs per scroll frame, a focused field is never hidden under the bar (the scroll view
+  ends at its line, so `scroll-pb-*` is not needed), and the scroll indicator stops at the bar. The CSS fade above the
+  bar (`before:-top-4 bg-linear-to-t from-paper`) is an overlay on the bar offset upward with hit testing off.
+- A button row that stops fitting at the largest text size (`flex-wrap` → two rows of buttons): in the reference hide
+  the secondary labels with a container query (`@container` on the bar, `@max-[35rem]:sr-only` on the label span, a
+  `title` for the tooltip); natively `ViewThatFits(in: .horizontal) { fullRow; compactRow }` as one item of the wrapping
+  `Layout` — a flow that measures items `.unspecified` and re-proposes the line width only to an item wider than the line
+  lets `ViewThatFits` pick the compact row exactly when the full one does not fit, no threshold needed. Put `.help` and
+  an accessibility label only on the icon-only variant.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
 
 ## Colors

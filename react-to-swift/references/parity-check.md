@@ -43,6 +43,13 @@ Pin overlay scrollers too (`-AppleShowScrollBars WhenScrolling`): headless Chrom
 mouse connected gives every `ScrollView` legacy scrollers that take 17 pt of its width — lines wrap differently from
 the reference and between your own runs.
 
+When no window may appear at all (the screen is in use), render the screen in a unit test: an `NSHostingView` as the
+content of an `NSWindow` that is never ordered in, the run loop spun for about a second, then `cacheDisplay(in:to:)`
+into a PNG; text scale = the root view's scale environment with the host frame multiplied by it (like the reference's
+root `zoom`). Gate such a suite on an environment flag so ordinary test runs skip it. Do not plan geometric assertions
+through the accessibility tree there: the hosting view of a window that was never shown returns no accessibility
+children, so "is the button in the first screen" stays a check of the reference script plus the image pair.
+
 ## Diff and measure
 `scripts/pixdiff.py A.png B.png [--crop x0,y0,x1,y1] [--out side.png] [--ink x0,y0,x1,y1:threshold]`
 - prints the bounding box and count of differing pixels (threshold 24 per channel);

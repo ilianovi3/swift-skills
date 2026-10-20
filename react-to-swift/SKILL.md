@@ -40,7 +40,7 @@ reference width (Playwright or a headless DevTools MCP — never a visible windo
 | Popover, dialog, toast | `popover`/`NSPopover`, `sheet`/alert, overlay with transition |
 | `title=` tooltip | `.help()` — but each one is a hit-test target; skip on dense repeated items |
 | Images | ImageIO thumbnails at display size + cache, not `AsyncImage` in lists |
-| `position: sticky` | `safeAreaInset` / pinned section headers |
+| `position: sticky` | `safeAreaInset` / pinned section headers; a `sticky bottom-0` action bar ending a scroll column — the bar outside the `ScrollView`, the `ScrollView` capped at its content height (`references/css-to-swiftui.md`) |
 | Custom title bar region (macOS) | `window.isMovable = false` + `WindowDragGesture` on your bars |
 
 Native chrome may differ (window, system dialogs, scroll bars, popover arrows); list each difference explicitly.
