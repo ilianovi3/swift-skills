@@ -180,6 +180,21 @@ row that barely fits at the default text size breaks again at the largest one.
   `NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)` — it lands at the
   caret; appending `"\n"` to the binding puts it at the end. A Return handler that sends on every modifier swallows ⌥↩:
   return `.ignored` for Option.
+- The web's `if (e.nativeEvent.isComposing) return` (Japanese/Chinese input) has no automatic equivalent: SwiftUI
+  `.onKeyPress` on a `TextField` sees ↩, arrows, Esc and ⌫ before the input method, so Enter during conversion sends
+  the half-typed text and ⌫ while the bound text is still empty deletes a chip. Check the field editor —
+  `(NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText()` — and return `.ignored` while composing, in
+  every key handler of a field (one helper in the kit). Testable without a window: `NSTextView().setMarkedText(…)`
+  then `hasMarkedText()`.
+- Web keyboard shortcuts become menu items (`Commands`), not hidden key handlers. A SwiftUI app has no Find ▸,
+  Spelling and Grammar, Substitutions, Transformations or Speech until `.commands { TextEditingCommands() }`;
+  `CommandGroup(replacing: .textEditing)` silently drops them all. A custom ⌘F (focus the page's search field) placed
+  `CommandGroup(before: .textEditing)` makes SwiftUI strip ⌘F from the system Find… itself — no duplicate shortcut.
+  Verify shortcuts without posting events: `NSEvent(cgEvent: CGEvent(keyboardEventSource: nil, virtualKey:,
+  keyDown: true))` with flags, then `NSApp.mainMenu?.performKeyEquivalent(with:)` in a `.prohibited` app; a
+  hand-built `NSEvent.keyEvent` with guessed characters gives false negatives (Delete is 0x7F against the item's 0x08,
+  ⇧Tab is 0x19). `.keyboardShortcut(.delete)` (⌘⌫), `(.tab, modifiers: .control)` and `[.control, .shift]` all match
+  real events, and ⌘-letter shortcuts still fire under a non-Latin layout.
 - A plain-style `Button` around an `HStack` of icon and text hit-tests only the glyphs and the icon's strokes (the gap
   and the line box are dead), while a web `<a class="flex gap-1">` is clickable over its whole box. Put
   `.contentShape(Rectangle())` on the label; to give a tiny link a larger target without moving anything, pad inside
