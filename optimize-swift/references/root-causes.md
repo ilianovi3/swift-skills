@@ -362,3 +362,25 @@ often divides by 32767. The 0.003 % amplitude difference changed 0.65 % of words
 (deterministic decoding, different but not better); dividing by 32768 made the text identical. Cutting at fixed
 30 s instead of in a pause costs ~3 WER points; long files can differ between two runs of the unchanged library, so
 compare against a repeat of the old code, not against zero.
+
+## 18. A language attribute on TextKit 1 text: an ICU break iterator built per layout
+
+**Why.** `kCTLanguageAttributeName` (the key SwiftUI's `AttributedString.languageIdentifier` maps to) on text laid out
+by `NSLayoutManager` makes the typesetter break lines through `NSParagraphArbitrator` with a *locale-specific* break
+iterator, and AppKit keeps no cache for a locale other than the current one: every `ensureLayout` of every paragraph
+calls `_NSCopyBreakIterator → ubrk_open → icu::BreakIterator::buildInstance → u_strFromUTF8WithSub` — the rules are
+compiled from data again (~0.13 ms per paragraph layout, more than half of the whole TextKit layout cost). Measured on
+a screen with ~60 one-paragraph `NSTextView`s (pills as attachments): window-resize step median 32 → 38 ms (+20 %),
+a document sheet with more such paragraphs 12 → 25 ms. SwiftUI `Text` with the same attribute does not pay this: its
+layout is CoreText, not `NSLayoutManager`.
+
+**Confirm.** `trace_callers.py inside <trace> '<your layout wrapper>'`: `ubrk_open` and `u_strFromUTF8WithSub`
+inclusive ≥ 40 % of `ensureLayoutForTextContainer`. A paragraph style's `lineBreakStrategy` is not the trigger (it is
+`[]` by default on macOS); the attribute is. A side effect: the per-language arbitration also breaks lines differently
+from a browser (ICU root rules) — one stack of rows was 201 pt taller, one short token wrapped where Blink kept it.
+
+**Fix.** Do not put the language attribute on text laid out by TextKit 1; after removing it the chain disappears from
+the trace (`lay` 995 → 376 ms over the same run, resize back inside the baseline's range). Keep the language where it is
+needed for speech (accessibility) by another route, not by a line-breaking attribute. Trap: the arbitration can still
+come from the input context's language once a text view has existed (first open broke like `Text`, re-opens like the
+attribute) — check `textInputContext?.selectedKeyboardInputSource` when breaks drift between opens.

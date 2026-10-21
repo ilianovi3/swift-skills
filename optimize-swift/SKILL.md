@@ -84,6 +84,7 @@ hits are visible in code. Note each suspect with file and line — it becomes a 
 | `@Observable` written with an equal value through `_modify` (nested or subscript write — a plain `set` of an `Equatable` is already skipped); two forms of one entity overwriting each other per sync; a clock inside a phase enum | every reader of the property re-renders on each write / each second | Guard at the setter all callers route through; split the fast-changing value into its own property (§15) |
 | First Core ML / Neural Engine use after an install or update is slow ("processing" takes 20–80 s once) | the model's load, not its inference: cache entries in `com.apple.e5rt.e5bundlecache` rewritten at that moment | Load in the background at launch / after download, single-flight load, a distinct "loading the model" state (`references/root-causes.md` §16) |
 | Per-call `LocalizedStringResource(locale:bundle:)` | ~1 ms per string in `body` | Cache the `<lang>.lproj` bundle, `String(localized:bundle:locale:)` (§11) |
+| `kCTLanguageAttributeName` on TextKit 1 paragraphs (`NSLayoutManager`) | `ubrk_open` → `icu::BreakIterator::buildInstance` under `NSParagraphArbitrator` on every `ensureLayout`; lines also break unlike a browser | No language attribute on TextKit-laid text (−60 % layout time); language for speech by another route (§18) |
 
 ## Output
 
