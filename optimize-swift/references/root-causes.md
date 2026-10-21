@@ -22,6 +22,8 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 15. Rebuilds the framework cannot skip: unchanged data, uncomparable inputs, equal writes
 16. Core ML first load after every install or update
 17. Whole audio files in memory for a speech model
+18. A language attribute on TextKit 1 text: an ICU break iterator built per layout
+19. Every NSTextView in a window observes every view's frame
 
 ---
 
@@ -390,3 +392,32 @@ the trace (`lay` 995 → 376 ms over the same run, resize back inside the baseli
 needed for speech (accessibility) by another route, not by a line-breaking attribute. Trap: the arbitration can still
 come from the input context's language once a text view has existed (first open broke like `Text`, re-opens like the
 attribute) — check `textInputContext?.selectedKeyboardInputSource` when breaks drift between opens.
+
+## 19. Every NSTextView in a window observes every view's frame
+
+**Why.** An `NSTextView` that joins a window registers for `NSView.frameDidChangeNotification` with object `nil`
+(`-[NSTextView _anyViewFrameChangedWithNotification:]`): any `setFrameOrigin`/`setFrameSize` of any view in the app
+posts a notification that is delivered to every live text view, and the registrar lookup itself grows with them. With
+one text view per paragraph (TextKit 1 paragraphs, AttachmentParagraph) a screen has hundreds: 500 frame changes of an
+unrelated view cost 18 ms with 300 paragraph text views alive versus 0.2 ms without (same in a running app). During a
+window resize SwiftUI moves every platform view, so the cost is quadratic in the number of text views.
+
+**Confirm.** `-[NSView _postFrameChangeNotification]` → `_CFXNotificationPost` → `CFXNotificationRegistrarFind` /
+`_qsort` and `-[NSTextView(NSPrivate) _anyViewFrameChangedWithNotification:]` under SwiftUI's
+`DisplayList.ViewUpdater.Platform.updateGeometry`. A micro-check: time 500 `setFrameOrigin` of a detached `NSView`
+before and after the screen is built.
+
+**Fix.** For display text views that neither scroll nor edit (the layout sets their frame and container), remove that
+one observation after AppKit adds it: `NotificationCenter.default.removeObserver(self, name:
+NSView.frameDidChangeNotification, object: nil)` in `viewDidMoveToWindow` and `viewDidMoveToSuperview` (registration
+happens on joining a window; `isEditable = false` does not prevent it). 18 → 0.12 ms for the same 500 changes. Keep the
+observation for real editors.
+
+**Trap: test hosts do not free NSTextViews.** In an app test host or a SwiftPM test, `NSTextView` instances (even a bare
+`NSTextView(frame:)`) stay alive until the run ends — AppKit releases them when control returns to the app's event loop,
+which a running test never gives back — and after their window closes they re-subscribe. A perf test that opens and
+closes a screen five times then pays for all the dead text views on every frame change (a document sheet resize 13.5 vs
+19–20 ms, base vs branch, only because of earlier opens in the same test). In the running app they are freed at once
+(a one-file AppKit app: 300 hosted text views alive=0 one event later). Remove the dead views' frame observation before
+measuring, as their release would.
+
