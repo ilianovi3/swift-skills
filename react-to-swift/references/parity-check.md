@@ -49,6 +49,12 @@ into a PNG; text scale = the root view's scale environment with the host frame m
 root `zoom`). Gate such a suite on an environment flag so ordinary test runs skip it. Do not plan geometric assertions
 through the accessibility tree there: the hosting view of a window that was never shown returns no accessibility
 children, so "is the button in the first screen" stays a check of the reference script plus the image pair.
+A view rendered at its own height (a dialog, a card) needs a measured frame: with `sizingOptions = []` the host's
+`fittingSize` is zero and `bitmapImageRepForCachingDisplay` returns `nil` (no file, no error), so size it with
+`NSHostingController(rootView:).sizeThatFits(in: NSSize(width: w, height: big))`. A sheet's chrome with a
+`ScrollView` body measures to the header only unless the root has `.fixedSize(horizontal: false, vertical: true)` —
+in the real sheet the system does that sizing. A sheet itself never opens in a window that was not shown: render its
+chrome as a plain view (the modifier's content extracted into a public view) for the pair.
 
 ## Diff and measure
 `scripts/pixdiff.py A.png B.png [--crop x0,y0,x1,y1] [--out side.png] [--ink x0,y0,x1,y1:threshold]`
