@@ -14,6 +14,7 @@ multiplier if the app has one (`value * k`), except hairlines (1 px borders stay
 - Shadows and blur
 - Opacity and states
 - Motion
+- Drag and drop
 - Form controls and disclosure
 - Accessibility attributes
 
@@ -155,6 +156,20 @@ row that barely fits at the default text size breaks again at the largest one.
         .offset(y: 12)
 }
 ```
+`backdrop-blur-[2px]` under a translucent full-window layer (`bg-paper/75`) has no SwiftUI equivalent: there is no
+backdrop filter, a `Material` is a much stronger blur with vibrancy, and `.blur` on the content below does not reach
+AppKit-backed views (hosted list rows, text views). Keep the layer flat and raise its opacity until the content under
+it is as unreadable as the blurred reference (75 % + 2 px blur ≈ 92 % flat); mark it `native:`.
+
+## Drag and drop
+HTML5 `dragover` with `e.dataTransfer.dropEffect = 'none'` (a refusal visible before the drop) maps to
+`onDrop(of: [.fileURL], delegate:)`: `dropUpdated` returns `DropProposal(operation: .forbidden)` for the "not allowed"
+cursor and `.copy` otherwise, and `performDrop` is not called on a forbidden proposal. `dropDestination(for:)` cannot
+refuse before the drop — use it only where every drop is accepted. The browser knows only count and MIME while
+hovering; natively read the file URLs in `dropEntered` (`loadObject(ofClass: URL.self)`, callbacks off the main queue)
+and decide by extension — if they are not readable yet, let the drop decide, as the reference does for an empty MIME.
+Put the overlay before `onDrop` in the modifier chain so it is part of the target, and announce the verdict for
+VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a drag overlay.
 
 ## Opacity and states
 - `disabled:opacity-40` on a filled button fades the whole button at once: `.compositingGroup().opacity(0.4)`.
