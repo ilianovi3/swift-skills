@@ -32,7 +32,7 @@ reference width (Playwright or a headless DevTools MCP — never a visible windo
 | --- | --- |
 | Long list of uniform rows | `LazyVStack`/`List` with cheap rows; `NSTableView`/`UICollectionView` for thousands |
 | Long document of heterogeneous, expensive blocks (macOS) | Build all blocks; host each row in its own `NSHostingView` inside an AppKit stack (see `optimize-swift`, pattern HostedStack) |
-| Paragraph with inline chips/mentions/tags | One `Text`; chips drawn from `Text.LayoutKey` rects (`optimize-swift`, InlineDecorations) — never a view per word |
+| Paragraph with inline chips/mentions/tags | Plain paragraph — one `Text`. With chips that wrap — one TextKit 1 `NSTextView` per paragraph, each chip one `NSTextAttachment` reserving its size, the chip view placed by a custom `Layout` on the attachment rect (`optimize-swift`, AttachmentParagraph); a placeholder inside `Text` is not atomic and breaks at line ends — never a view per word |
 | Word-by-word reveal | `TextRenderer` with per-run opacity, not word views |
 | Hover highlight shared across items | Per-item observable flags; hover only where it adds meaning |
 | `contentEditable`, `<textarea>` | `TextField(axis: .vertical)` or `NSTextView`/`UITextView`; with atomic inline chips (mentions) — `NSTextView` + `NSTextAttachment` (css-to-swiftui, Form controls) |

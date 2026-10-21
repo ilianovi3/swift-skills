@@ -6,7 +6,8 @@ pattern names the root cause it answers (`root-causes.md`).
 ## Contents
 - HostedStack — AppKit partition of a long document (§1, §3)
 - PerItemFlags — hover/selection without fan-out (§3)
-- InlineDecorations — chips inside one `Text` (§4)
+- InlineDecorations — chips inside one `Text` (§4) — superseded for paragraphs that wrap: see AttachmentParagraph
+- AttachmentParagraph — chips as TextKit 1 attachments, SwiftUI views placed on their rects (§4)
 - WordReveal — per-word animation without views per word (§4)
 - CachedFlowLayout — measure once (§5)
 - ScrollCover — no hover during scroll without toggling content (§8)
@@ -194,6 +195,80 @@ scroll frames; computing rects there showed up as ~300 ms per 20 s of scrolling.
 Lessons: drawing the chip's text inside the `Text` and only its background behind was a dead end — run-level
 `baselineOffset` replaces (not adds to) the paragraph's offset, and fonts differ in metrics; rendering the real chip
 view behind an invisible placeholder is exact. Verify with a pixel diff (capsule rows and text ink rows within 1 px).
+
+Trap (2026-10, measured): the placeholder is **not atomic**. The leading spacer image, the invisible name and the
+trailing spacer are separate line-break opportunities even with NBSP inside the name: a sweep of widths 300…700 pt
+over a 2-line summary with 4 chips broke a chip across lines at 258 of 401 widths; the union rect then spans the end of
+one line and the start of the next, the chip is drawn over the last word and a hole stays where the invisible name sits.
+Fix by structure, not by more spacers: AttachmentParagraph.
+
+## AttachmentParagraph
+
+A paragraph with inline chips (people, time links, tags) that must wrap like the web: a TextKit 1 `NSTextView`
+(non-editable, selectable) per paragraph; every chip is one `NSTextAttachment` character whose cell draws nothing and
+only reserves the chip's size (`cellSize`, `cellBaselineOffset`). The line breaker never splits one character, a comma
+after it stays on its line (UAX #14), ⌫/selection/copy treat it as one unit, VoiceOver reads the cell's
+`accessibilityLabel`. The chip views themselves stay SwiftUI (same component as everywhere — pixel-identical, hover,
+popovers) and are placed by a custom `Layout` in the same pass:
+
+```swift
+struct ParagraphLayout: SwiftUI.Layout {             // subviews[0] = the NSTextView host, then one view per attachment
+    let engine: Engine                               // owns storage, NSLayoutManager, NSTextContainer, the NSTextView
+    let content: Engine.Content                      // runs + style + scale: Hashable, rebuilds storage only on change
+    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache _: inout ()) -> CGSize {
+        MainActor.assumeIsolated {
+            engine.update(content, sizes: subviews.dropFirst().map { $0.sizeThatFits(.unspecified) })   // chip sizes → cells
+            return engine.size(width: proposal.width)                                                     // layout at that width
+        }
+    }
+    func placeSubviews(in b: CGRect, proposal _: ProposedViewSize, subviews: LayoutSubviews, cache _: inout ()) {
+        let rects = MainActor.assumeIsolated { engine.attachmentRects(width: b.width) }   // container = placed width
+        subviews[0].place(at: b.origin, proposal: ProposedViewSize(b.size))
+        for (i, v) in subviews.dropFirst().enumerated() { v.place(at: CGPoint(x: b.minX + rects[i].minX, y: b.minY + rects[i].minY), proposal: ProposedViewSize(rects[i].size)) }
+    }
+    // + explicitAlignment(of: .firstTextBaseline / .lastTextBaseline) from the line fragments, or rows that align
+    //   bullets and labels by first baseline lose it (a custom Layout has no text baseline by default).
+}
+```
+
+Rules learned on the way:
+- The container width is the engine's, not the view's (`widthTracksTextView = false`): measure and place at the same
+  width. An `NSViewRepresentable.sizeThatFits` that sets `containerSize` for a probe (SwiftUI probes 0, ∞, `nil` and
+  other widths without changing the frame) must restore the frame width afterwards — otherwise the text wraps at the
+  probe width and overflows the frame (an editor whose text ran under the panel below it).
+- Round the reserved width up to a whole point: TextKit 1 advances the next glyph by the integer part of the cell
+  width, and a 106.56 pt chip overlapped the following space by 0.56 pt.
+- Attachment rect: `lineFragmentRect(forGlyphAt:)` + `location(forGlyphAt:)` gives the baseline; bottom = baseline −
+  `cellBaselineOffset`. Do not give the attachment character the paragraph's `.baselineOffset` attribute — fold the
+  text's lift into the cell offset, so the rect math stays exact.
+- CSS `vertical-align: middle` = cell offset `lift + xHeight / 2 − h / 2` (+1 for `translate-y-[-1px]`); a time link
+  is baseline-aligned: offset `lift − (h − firstBaseline)` with the baseline read from the SwiftUI view's dimensions.
+- `foregroundStyle` set outside a representable does not reach `NSTextView` (no public environment value): the text
+  color, strikethrough, underline and monospaced digits become parameters of the paragraph view; audit call sites for
+  `.foregroundStyle` after the paragraph.
+- `ImageRenderer` does not draw `NSView`s: snapshot paragraphs with `cacheDisplay(in:to:)` of the hosting view, and
+  measure heights with `NSHostingController.sizeThatFits(in:)`.
+- A non-selectable paragraph inside a button row must return `nil` from `hitTest`, and display paragraphs must not be
+  key views (`canBecomeKeyView = false`), or ⇥ stops at every paragraph of the screen.
+- Line metrics equal to `Text`: set every line through `NSLayoutManagerDelegate.shouldSetLineFragmentRect`
+  (height = CSS line exactly, `baselineOffset` = the web baseline) instead of a `.baselineOffset` attribute on the text —
+  the attribute approach was 0.5–3 pt off and a line taller; with the delegate, ink rows of `Text` and the engine match
+  to the pixel in all tested styles. Report the `firstTextBaseline` guide the way `Text` does (one font size below the
+  line top, not the drawn baseline), or rows aligning a `Text` bullet with the paragraph shift.
+- `location(forGlyphAt:)` of an attachment glyph is the bottom of its cell (rounded), not the baseline: compute the
+  rect from the line's known baseline, or the chip lands ~5 pt low.
+- A proposal of width 0 is a real width (the narrowest layout): stacks probe 0 and ∞ to learn flexibility; treating 0
+  as "unbounded" made `HStack { "—"; paragraph }` wrap the paragraph early.
+- Word-by-word reveal on the engine: temporary attributes of the layout manager per word range, driven by an
+  `Animatable` modifier on the text host (SwiftUI's clock, the same curve as the chip views) — a `CADisplayLink` of its
+  own never ticks in an off-screen window, and the text stayed at 10 % opacity in snapshots.
+- An editable `NSTextView` sized only through `NSViewRepresentable.sizeThatFits` kept the height of the previous text
+  in a narrow column after typing; a custom `Layout` around it that measures the text at the proposed width each time
+  (relayout keyed by an edit counter) and pins the container to the placed width fixed it.
+- Cost (Debug, 200 paragraphs × 40 words × 2 chips, width 600): 421 ms vs 115 ms for the same paragraphs as `Text`
+  — about 1.5 ms per paragraph for the `NSTextView` + TextKit stack. Release, a 25-block screen: first pass 400 → 415
+  ms, touch 66 → 63 ms, but live window resize 32.7 → 41.6 ms median (+27 %): every width step re-lays out each
+  paragraph's TextKit stack. Budget it before converting every paragraph; plain paragraphs stay `Text`.
 
 ## WordReveal
 
