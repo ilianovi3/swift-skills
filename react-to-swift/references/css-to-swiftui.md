@@ -156,10 +156,13 @@ row that barely fits at the default text size breaks again at the largest one.
         .offset(y: 12)
 }
 ```
-`backdrop-blur-[2px]` under a translucent full-window layer (`bg-paper/75`) has no SwiftUI equivalent: there is no
-backdrop filter, a `Material` is a much stronger blur with vibrancy, and `.blur` on the content below does not reach
-AppKit-backed views (hosted list rows, text views). Keep the layer flat and raise its opacity until the content under
-it is as unreadable as the blurred reference (75 % + 2 px blur ≈ 92 % flat); mark it `native:`.
+`backdrop-blur-[2px]` under a translucent full-window layer (`bg-paper/75`): blur the content under the layer, not the
+layer — `content.blur(radius: active ? 2 * k : 0).overlay { layer }` (CSS `blur(2px)` is sigma 2, so is the
+`blur(radius:)` argument). It reaches AppKit-backed views inside the SwiftUI tree too (hosted list rows), keep the
+layer at the reference opacity and the look matches (measured: contrast of text under the layer equals the
+reference in both themes). Do not pass `opaque: true`: hosted AppKit views then render as grey blocks. A `Material`
+is a different, much stronger blur with vibrancy. `cacheDisplay` snapshots do not apply layer filters (neither this
+blur nor blurred shadows show), so check it with `CARenderer` into a Metal texture (`parity-check.md`).
 
 ## Drag and drop
 HTML5 `dragover` with `e.dataTransfer.dropEffect = 'none'` (a refusal visible before the drop) maps to

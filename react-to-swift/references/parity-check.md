@@ -46,7 +46,11 @@ the reference and between your own runs.
 When no window may appear at all (the screen is in use), render the screen in a unit test: an `NSHostingView` as the
 content of an `NSWindow` that is never ordered in, the run loop spun for about a second, then `cacheDisplay(in:to:)`
 into a PNG; text scale = the root view's scale environment with the host frame multiplied by it (like the reference's
-root `zoom`). Gate such a suite on an environment flag so ordinary test runs skip it. Do not plan geometric assertions
+root `zoom`). Gate such a suite on an environment flag so ordinary test runs skip it. `cacheDisplay` draws views, not
+the composited layer tree: layer filters (`.blur`, blurred shadows, backdrop effects) are missing. For those, render
+the window's layer tree with `CARenderer(mtlTexture:options:)` into a `.managed` `bgra8Unorm` texture after
+`window.display()` — scale with the root layer's transform (anchor point zero), flip rows when saving (layer origin is
+bottom-left). A renderer keeps the tree it was attached to: after a state change attach a new one. Do not plan geometric assertions
 through the accessibility tree there: the hosting view of a window that was never shown returns no accessibility
 children, so "is the button in the first screen" stays a check of the reference script plus the image pair.
 A view rendered at its own height (a dialog, a card) needs a measured frame: with `sizingOptions = []` the host's
