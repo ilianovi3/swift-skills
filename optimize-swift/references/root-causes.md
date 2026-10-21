@@ -176,6 +176,12 @@ block from `onScrollVisibilityChange`, invalidates and redraws that subtree.
 under a stationary cursor highlights again. The cover changes *which* view wins the hit, not how much the search
 costs (§1 traps) — it is a tool against hover-state churn and the redraws it causes, not against hit-testing time.
 
+The same family: a `.blur(radius:)` switched on over a whole window (a drag-and-drop layer that blurs the page under
+it) costs one update pass that redraws the subtree into the filter. Measured offscreen (Release, 1280×800 @2x, page
+with AppKit-hosted rows): the update that shows the layer — 3 ms without the blur, 16 ms with it; each later frame
+rendered by Core Animation — 1.3 → 4.3 ms of GPU. Once per drag entry it is a single dropped frame at the layer's
+appearance; for anything toggled repeatedly (hover, scroll), do not blur a big subtree.
+
 ## 9. Images in lists
 
 **Why.** `AsyncImage` has no shared cache for decoded images and no downsampling: every row re-loads and decodes the
