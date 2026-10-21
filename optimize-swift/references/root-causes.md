@@ -190,6 +190,15 @@ new layout, which sets the fractional frame again — 150 frame changes per seco
 
 **Fix.** Apply frame updates only when they differ by more than 1 pt; round sizes yourself.
 
+**Dragging such a panel.** Let the system move it: `WindowDragGesture` on the panel's content with `isMovable = false`
+(AppKit then does not keep drag regions for the window, and nothing in the app runs per frame); buttons inside keep
+their clicks, a tap gesture fails on movement and lets the drag win. Do not re-place the panel from `didMove` of every
+window — observe only the panel's own `didMove`, ignore frames you set yourself (within 1 pt), and while
+`NSEvent.pressedMouseButtons` is non-zero only wait (re-check ~0.1 s); on release store the position as edges + offsets
+of the visible frame and clamp it back on screen. A test can prove "no layout per frame": a hosting view subclass
+counting `layout()` in an unshown panel, first wait out appear animations (count flat with no moves), then 240 ×
+`setFrameOrigin` — measured: one pass for the whole run (SwiftUI updates the window position once), not one per frame.
+
 ## 11. Small constant costs worth removing
 
 - `MenuBarExtra` with live SwiftUI content rebuilds via KVO of status-bar buttons between frames (~15 % of the main
