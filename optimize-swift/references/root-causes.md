@@ -21,6 +21,7 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 14. A non-lazy container inside a lazy stack
 15. Rebuilds the framework cannot skip: unchanged data, uncomparable inputs, equal writes
 16. Core ML first load after every install or update
+17. Whole audio files in memory for a speech model
 
 ---
 
@@ -334,3 +335,31 @@ cold again. Watch the cache folder's entries get rewritten at the moment of the 
 
 **Trap.** A harness or unit test that loads the same model twice in one build sees only the warm number; measure cold
 with a fresh binary name (new cache folder) or a re-signed binary.
+
+## 17. Whole audio files in memory for a speech model
+
+**Why.** Convenience entry points of speech libraries (`transcribe(audioPath:)` in WhisperKit and similar) read the whole
+file into one `[Float]` and then chunk it into windows by copying slices — every chunk lives until the batch ends. An hour
+of 16 kHz mono is 230 MB per copy; measured on a 70-minute file: peak RSS 1276 MB (124 MB after the model load), a
+pass-through test showed +1080 MB over the start vs +313 MB for 10 minutes — memory grows with the recording, and long
+meetings or lectures push the app into swap or a jetsam kill.
+
+**Confirm.** Peak `phys_footprint` growth for a 10-minute and a 70-minute file after a warm-up run; growth that scales
+with length is the file in memory. Measure in a separate process (Swift Testing exit test, a CLI harness): parallel
+tests that load other models in the same process add hundreds of MB of noise.
+
+**Fix.** Keep the library's own windowing rule, but feed it windows read from disk: compute window bounds with the
+library's chunker logic (for WhisperKit `VADAudioChunker`: at most 30 s, cut in the middle of the longest
+`EnergyVAD` silence in the window's second half, drop a final tail ≤ 1 s), read each window with a seekable PCM reader,
+and send batches of `concurrentWorkerCount` windows to the array API (`transcribeWithResults(audioArrays:)`) — the same
+batches and parallelism the library used internally, so speed stays the same. Shift word times by the window start.
+Measured: 70 minutes 1276 → 486 MB peak RSS, 258 → 255 s; the remaining ~360 MB is the working memory of 16 parallel
+decoders and does not depend on length. A unit test without the model can assert that your window bounds equal the
+library chunker's on synthetic audio (tone bursts with and without pauses, shorter than one window, a short tail).
+
+**Trap.** Match the old input scale exactly: AVFoundation converts Int16 to Float by / 32768, a hand-written WAV reader
+often divides by 32767. The 0.003 % amplitude difference changed 0.65 % of words on a 41-minute multilingual corpus
+(deterministic decoding, different but not better); dividing by 32768 made the text identical. Multiplying an already
+scaled sample by 32767/32768 is not enough for long files — double rounding still flipped a few windows. Cutting at fixed
+30 s instead of in a pause costs ~3 WER points; long files can differ between two runs of the unchanged library, so
+compare against a repeat of the old code, not against zero.
