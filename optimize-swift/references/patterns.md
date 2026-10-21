@@ -215,11 +215,15 @@ popovers) and are placed by a custom `Layout` in the same pass:
 struct ParagraphLayout: SwiftUI.Layout {             // subviews[0] = the NSTextView host, then one view per attachment
     let engine: Engine                               // owns storage, NSLayoutManager, NSTextContainer, the NSTextView
     let content: Engine.Content                      // runs + style + scale: Hashable, rebuilds storage only on change
-    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache _: inout ()) -> CGSize {
-        MainActor.assumeIsolated {
-            engine.update(content, sizes: subviews.dropFirst().map { $0.sizeThatFits(.unspecified) })   // chip sizes → cells
-            return engine.size(width: proposal.width)                                                     // layout at that width
-        }
+    // Chip sizes do not depend on the proposal: measure them (and compare `content`) once per content/subviews change,
+    // not in every sizeThatFits / explicitAlignment / placeSubviews — a window resize then never re-measures chips.
+    func makeCache(subviews: LayoutSubviews) { sync(subviews) }
+    func updateCache(_: inout (), subviews: LayoutSubviews) { sync(subviews) }
+    private func sync(_ subviews: LayoutSubviews) {
+        MainActor.assumeIsolated { engine.update(content, sizes: subviews.dropFirst().map { $0.sizeThatFits(.unspecified) }) }
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews _: LayoutSubviews, cache _: inout ()) -> CGSize {
+        MainActor.assumeIsolated { engine.size(width: proposal.width) }                                  // layout at that width
     }
     func placeSubviews(in b: CGRect, proposal _: ProposedViewSize, subviews: LayoutSubviews, cache _: inout ()) {
         let rects = MainActor.assumeIsolated { engine.attachmentRects(width: b.width) }   // container = placed width
@@ -265,10 +269,25 @@ Rules learned on the way:
 - An editable `NSTextView` sized only through `NSViewRepresentable.sizeThatFits` kept the height of the previous text
   in a narrow column after typing; a custom `Layout` around it that measures the text at the proposed width each time
   (relayout keyed by an edit counter) and pins the container to the placed width fixed it.
-- Cost (Debug, 200 paragraphs × 40 words × 2 chips, width 600): 421 ms vs 115 ms for the same paragraphs as `Text`
-  — about 1.5 ms per paragraph for the `NSTextView` + TextKit stack. Release, a 25-block screen: first pass 400 → 415
-  ms, touch 66 → 63 ms, but live window resize 32.7 → 41.6 ms median (+27 %): every width step re-lays out each
-  paragraph's TextKit stack. Budget it before converting every paragraph; plain paragraphs stay `Text`.
+- Measure the paragraph's width from its line fragments (`enumerateLineFragments`, max `usedRect.maxX`), not from
+  `NSLayoutManager.usedRect(for:)`: with an `NSTextView` on the container that returns the whole container width (a
+  172 pt line reported 100 000 at the one-line probe), and every flow/stack placing the paragraph thinks it fills the
+  row — chips after it wrapped to a new line, a screen grew by 201 pt.
+- Placing at the paragraph's own width after measuring at the proposed width needs no new layout: at any width between
+  the longest line and the container the lines are the same (greedy breaking). Without that check every placement
+  re-laid out the paragraph (`atomRects`/baselines → `ensureLayout` again).
+- The narrowest probe (proposal 0): lay out at the widest unbreakable word (from the one-line layout), not at 1 pt —
+  at 1 pt TextKit breaks words into one line per character (343 → 78 ms for 200 paragraphs in Debug).
+- No `kCTLanguageAttributeName` on the text (root-causes §18): an ICU break iterator per layout and browser-unlike breaks.
+- An `NSTextView` that joins a window subscribes to frame changes of every view (root-causes §19): remove that
+  observation for display paragraphs in `viewDidMoveToWindow` and `viewDidMoveToSuperview`.
+- A WORD JOINER (U+2060) used as an invisible padding carrier before a fragment after a space forbids the line break
+  after that space (UAX #14 LB11 outranks LB18) — the space and the fragment travel to the next line together; put the
+  padding as kern on the space instead. Kern on an attachment character is ignored by TextKit 1.
+- Cost (Release, 200 paragraphs × 40 words × 2 chips, width 600): 390 ms vs 124 ms for the same text as `Text`; the
+  engine without chips is +0.09 ms per paragraph over `Text`, two SwiftUI chips in a row alone cost 185 ms — the chips,
+  not the text engine, dominate. Window resize after the fixes above: equal to or faster than the per-word flow it
+  replaced (kitchen screen 1.01/0.90 of the base, document sheet 0.90/0.84). Plain paragraphs stay `Text`.
 
 ## WordReveal
 
