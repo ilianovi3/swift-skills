@@ -55,6 +55,13 @@ A view rendered at its own height (a dialog, a card) needs a measured frame: wit
 `ScrollView` body measures to the header only unless the root has `.fixedSize(horizontal: false, vertical: true)` —
 in the real sheet the system does that sizing. A sheet itself never opens in a window that was not shown: render its
 chrome as a plain view (the modifier's content extracted into a public view) for the pair.
+A SwiftUI `.alert` on macOS is an `NSAlert` sheet, so it cannot be presented there either (and presenting a sheet on a
+hidden window may bring the window on screen): build an `NSAlert` with the same strings and buttons in the same order,
+`layout()` it, set `window.appearance` and cache `window.contentView` inside `appearance.performAsCurrentDrawingAppearance`.
+Its background is an `NSVisualEffectView` that the cache leaves transparent (dark-theme text then shows white on
+white): composite the cache over `NSColor.windowBackgroundColor` resolved in the same appearance, and draw it with
+`draw(in:from:operation: .sourceOver, …)` — plain `NSImageRep.draw(in:)` copies the transparent pixels over the fill.
+The default button stays grey (the window is never key), and the alert ignores the app's text scale — no XL pair.
 
 ## Diff and measure
 `scripts/pixdiff.py A.png B.png [--crop x0,y0,x1,y1] [--out side.png] [--ink x0,y0,x1,y1:threshold]`
