@@ -359,7 +359,6 @@ library chunker's on synthetic audio (tone bursts with and without pauses, short
 
 **Trap.** Match the old input scale exactly: AVFoundation converts Int16 to Float by / 32768, a hand-written WAV reader
 often divides by 32767. The 0.003 % amplitude difference changed 0.65 % of words on a 41-minute multilingual corpus
-(deterministic decoding, different but not better); dividing by 32768 made the text identical. Multiplying an already
-scaled sample by 32767/32768 is not enough for long files — double rounding still flipped a few windows. Cutting at fixed
+(deterministic decoding, different but not better); dividing by 32768 made the text identical. Cutting at fixed
 30 s instead of in a pause costs ~3 WER points; long files can differ between two runs of the unchanged library, so
 compare against a repeat of the old code, not against zero.
