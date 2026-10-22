@@ -173,9 +173,14 @@ at the drop it reads the pasteboard synchronously on the main thread and takes a
 the app) — for file zones use a `DropDelegate` too.
 
 **Read nothing while hovering.** When the dragged item comes from your own app (a SwiftUI `.draggable` row whose
-`FileRepresentation` renders on the main actor, a file promise), AppKit resolves its promised data synchronously on the
+`FileRepresentation` renders on the main actor), AppKit resolves its promised data synchronously on the
 main thread (`PasteboardDataProvider` → `NSItemProvider.loadDataRepresentationSynchronously` → semaphore) while the
 source must answer on that same thread — the app deadlocks, CPU 0 %, ⌘Q and Force Quit from the Dock do nothing.
+The source side has the same trap for readers in other apps: AppKit asks a pasteboard owner for promised data on the
+owner's main thread, in `NSEventTrackingRunLoopMode` (measured with two processes), and `.draggable` waits there
+synchronously — a representation that awaits the main actor (`FileRepresentation` rendering a PDF on main) hangs the
+app the moment Finder or a messenger reads it. Every `.draggable` representation must be producible off the main actor;
+a file rendered on main goes out as a file promise (`NSFilePromiseProvider`, written after the drop) or not at all.
 Measured with a recording data provider: `info.itemProviders(for:)` reads, and so does `info.hasItemsConforming(to:)`
 for any type that is not itself on the pasteboard — SwiftUI resolves every `public.file-url` to check the file's
 content type, so `[.audio]` (any content type) or a marker type absent from the board read data; only types actually
