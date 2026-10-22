@@ -167,16 +167,35 @@ blur nor blurred shadows show), so check it with `CARenderer` into a Metal textu
 ## Drag and drop
 HTML5 `dragover` with `e.dataTransfer.dropEffect = 'none'` (a refusal visible before the drop) maps to
 `onDrop(of: [.fileURL], delegate:)`: `dropUpdated` returns `DropProposal(operation: .forbidden)` for the "not allowed"
-cursor and `.copy` otherwise, and `performDrop` is not called on a forbidden proposal. `dropDestination(for:)` cannot
-refuse before the drop — use it only where every drop is accepted. While hovering decide by **types only**, as the
-browser does with MIME: `info.hasItemsConforming(to: [.audio, .movie, .pdf, …])`. Never call `info.itemProviders(for:)`
-or load data in `validateDrop`/`dropEntered`/`dropUpdated`: when the dragged item comes from your own app (a SwiftUI
-`.draggable`/`onDrag` row, a file promise), AppKit resolves its promised data synchronously on the main thread
-(`PasteboardDataProvider` → `NSItemProvider.loadDataRepresentationSynchronously` → semaphore) while the source must
-answer on that same thread — the app deadlocks, CPU 0 %, ⌘Q and Force Quit from the Dock do nothing. Read URLs only in
-`performDrop`, asynchronously (`loadFileRepresentation`/`loadItem` with a handler), and make the import target ignore
-drags that start inside the app. A drag target is accepted only after a live drag in the built app — from Finder and
-from inside the app — unit tests of the verdict do not exercise the pasteboard.
+cursor and `.copy` otherwise, and `performDrop` is not called on a forbidden proposal; `validateDrop` returning `false`
+skips `dropEntered`/`dropUpdated`/`performDrop` altogether. `dropDestination(for:)` cannot refuse before the drop, and
+at the drop it reads the pasteboard synchronously on the main thread and takes any URL (web links, rows dragged inside
+the app) — for file zones use a `DropDelegate` too.
+
+**Read nothing while hovering.** When the dragged item comes from your own app (a SwiftUI `.draggable` row whose
+`FileRepresentation` renders on the main actor, a file promise), AppKit resolves its promised data synchronously on the
+main thread (`PasteboardDataProvider` → `NSItemProvider.loadDataRepresentationSynchronously` → semaphore) while the
+source must answer on that same thread — the app deadlocks, CPU 0 %, ⌘Q and Force Quit from the Dock do nothing.
+Measured with a recording data provider: `info.itemProviders(for:)` reads, and so does `info.hasItemsConforming(to:)`
+for any type that is not itself on the pasteboard — SwiftUI resolves every `public.file-url` to check the file's
+content type, so `[.audio]` (any content type) or a marker type absent from the board read data; only types actually
+present (`[.fileURL]`, `[.url]`) stay read-free. Decide from pasteboard metadata instead: the item types of
+`NSPasteboard(name: .drag)` (how many items carry `public.file-url`, whether your marker is there) never resolve a
+promise. A file dragged from Finder carries only `public.file-url` — its format is unknown until the drop; treat it like
+an empty MIME in the browser and let the drop decide. Mark your own drag sources with a private exported type
+(`DataRepresentation(exportedContentType: .myAppDrag) { _ in Data() }`, declared in `UTExportedTypeDeclarations`) and
+refuse it in `validateDrop`; read URLs only in `performDrop` (`itemProviders(for: [.fileURL])`, then
+`loadObject(ofClass: URL.self)` with a handler, then back to the main queue).
+
+Test it without a mouse: host the view in an unshown window, take the subview with non-empty `registeredDraggedTypes`
+(SwiftUI's `_PlatformDraggingDestinationView` inside `AppKitPlatformViewHost`, as large as the modified view; the
+hosting view's `hitTest` returns the hosting view itself) and call `draggingEntered`/`draggingUpdated`/`prepareForDragOperation`/
+`performDragOperation` with your own `NSDraggingInfo` (`draggingSource` non-`nil` for an in-app drag) whose pasteboard
+(`NSPasteboard.withUniqueName()`) holds `NSPasteboardItem`s with a data provider that counts calls on the main thread —
+the deadlock shows up as a counted call instead of a frozen test host. A main-actor test that waits for the dropped URLs
+must suspend (`await Task.sleep` in a bounded loop): a nested `RunLoop.run` inside a main-queue block does not drain the
+main queue, so `DispatchQueue.main` handlers arrive only after the test returns. A live drag from Finder and from inside
+the built app is still the final check.
 Put the overlay before `onDrop` in the modifier chain so it is part of the target, and announce the verdict for
 VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a drag overlay.
 
