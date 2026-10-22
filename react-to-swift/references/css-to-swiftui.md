@@ -168,9 +168,15 @@ blur nor blurred shadows show), so check it with `CARenderer` into a Metal textu
 HTML5 `dragover` with `e.dataTransfer.dropEffect = 'none'` (a refusal visible before the drop) maps to
 `onDrop(of: [.fileURL], delegate:)`: `dropUpdated` returns `DropProposal(operation: .forbidden)` for the "not allowed"
 cursor and `.copy` otherwise, and `performDrop` is not called on a forbidden proposal. `dropDestination(for:)` cannot
-refuse before the drop — use it only where every drop is accepted. The browser knows only count and MIME while
-hovering; natively read the file URLs in `dropEntered` (`loadObject(ofClass: URL.self)`, callbacks off the main queue)
-and decide by extension — if they are not readable yet, let the drop decide, as the reference does for an empty MIME.
+refuse before the drop — use it only where every drop is accepted. While hovering decide by **types only**, as the
+browser does with MIME: `info.hasItemsConforming(to: [.audio, .movie, .pdf, …])`. Never call `info.itemProviders(for:)`
+or load data in `validateDrop`/`dropEntered`/`dropUpdated`: when the dragged item comes from your own app (a SwiftUI
+`.draggable`/`onDrag` row, a file promise), AppKit resolves its promised data synchronously on the main thread
+(`PasteboardDataProvider` → `NSItemProvider.loadDataRepresentationSynchronously` → semaphore) while the source must
+answer on that same thread — the app deadlocks, CPU 0 %, ⌘Q and Force Quit from the Dock do nothing. Read URLs only in
+`performDrop`, asynchronously (`loadFileRepresentation`/`loadItem` with a handler), and make the import target ignore
+drags that start inside the app. A drag target is accepted only after a live drag in the built app — from Finder and
+from inside the app — unit tests of the verdict do not exercise the pasteboard.
 Put the overlay before `onDrop` in the modifier chain so it is part of the target, and announce the verdict for
 VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a drag overlay.
 
