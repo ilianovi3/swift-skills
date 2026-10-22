@@ -13,6 +13,11 @@ largest text scale. A handful of screenshots per screen, not every combination: 
 sizes) takes hours and finds nothing a kit-level check doesn't. Automate the rest as a smoke pass (screen opens,
 no empty blocks where data exists).
 
+Text built on TextKit inside SwiftUI (paragraphs with inline chips, editors) also needs one check in the running app
+window resized across the layout breakpoints in both directions (a side column appearing, a panel opening): host
+snapshots set the frame once, and the bug where the text is drawn at a width SwiftUI only measured (text over the next
+section, chips over the text) shows only there (`optimize-swift` root-causes §20).
+
 ## Reference screenshot (headless)
 Never open a visible browser window on the user's screen.
 ```sh
