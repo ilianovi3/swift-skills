@@ -86,6 +86,7 @@ hits are visible in code. Note each suspect with file and line — it becomes a 
 | Per-call `LocalizedStringResource(locale:bundle:)` | ~1 ms per string in `body` | Cache the `<lang>.lproj` bundle, `String(localized:bundle:locale:)` (§11) |
 | `kCTLanguageAttributeName` on TextKit 1 paragraphs (`NSLayoutManager`) | `ubrk_open` → `icu::BreakIterator::buildInstance` under `NSParagraphArbitrator` on every `ensureLayout`; lines also break unlike a browser | No language attribute on TextKit-laid text (−60 % layout time); language for speech by another route (§18) |
 | Hundreds of `NSTextView`s (one per paragraph) in a window | `_postFrameChangeNotification` → `_CFXNotificationPost` → `-[NSTextView _anyViewFrameChangedWithNotification:]` on every view move | Remove that observation for display text views on joining a window; test hosts never free text views — purge before measuring (§19) |
+| Custom `Layout` with mutable state (TextKit container) and no horizontal `explicitAlignment`; text drawn narrower than its frame, chips over text after a window resize | `ViewLayoutEngine.defaultAlignment` → `childGeometries` → `placeSubviews` at `(0,0)` inside the parent's `sizeThatFits` | `explicitAlignment(of: HorizontalAlignment) → nil`; restore state from the frame in `viewWillDraw` (§20) |
 
 ## Output
 

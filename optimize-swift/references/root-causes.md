@@ -24,6 +24,7 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 17. Whole audio files in memory for a speech model
 18. A language attribute on TextKit 1 text: an ICU break iterator built per layout
 19. Every NSTextView in a window observes every view's frame
+20. A `Layout` with mutable state placed for alignment guides: speculative `placeSubviews`
 
 ---
 
@@ -421,3 +422,42 @@ closes a screen five times then pays for all the dead text views on every frame 
 (a one-file AppKit app: 300 hosted text views alive=0 one event later). Remove the dead views' frame observation before
 measuring, as their release would.
 
+## 20. A `Layout` with mutable state placed for alignment guides: speculative `placeSubviews`
+
+**Why.** A custom `Layout` that does not implement `explicitAlignment(of: HorizontalAlignment, …)` gets the protocol's
+default, which merges the subviews' guides — and to know where they are it places the subviews at `(0,0)` on the size
+it was asked about (`ViewLayoutEngine.defaultAlignment` → `childGeometries(at:origin: .zero)` → your `placeSubviews`).
+Any parent that needs the child's `.leading` (`.frame(maxWidth:alignment: .leading)` inside `VStack(alignment:
+.leading)`) asks for it while it is still **measuring** candidates, so `placeSubviews` runs for widths that never reach
+the screen — in one window session a paragraph saw 619 such calls against 32 real placements. Harmless for pure layouts;
+wrong for a layout that keeps state across calls. A TextKit paragraph engine sets its `NSTextContainer` width inside
+`sizeThatFits`/`placeSubviews`; the `NSTextView` then drew the text wrapped at the last speculative width (492 pt) in a
+frame laid at 655: text over the next section, inline chip views (placed by the real pass) on top of the text with holes
+where their attachments are, list rows overlapping (row height from one layout, glyphs from another). Test hosts set the
+frame once and measure on one candidate, so snapshots stayed correct; it showed only when a live window changed width
+or a column appeared, and kept the last stale state after the layout storm settled.
+
+**Confirm.** Count `placeSubviews` calls with `bounds.origin == .zero` (a `#if DEBUG` counter), or log the stack of one:
+`StackLayout.placeChildren` / `sizeChildrenUsingMajorAxisProposal` → `_FlexFrameLayout.placement` →
+`ViewDimensions[AlignmentKey]` → `<YourLayout>.explicitAlignment(of: HorizontalAlignment…)` (default) →
+`ViewLayoutEngine.childGeometries` → `<YourLayout>.placeSubviews`. At draw time compare the text container (and the
+laid lines) with the text view's frame: `container.width < frame.width` or lines below `frame.height` is the bug.
+
+**Fix.** Two parts, both needed:
+1. Return `nil` from `explicitAlignment(of: HorizontalAlignment, …)` (implicit guides from the frame, as `Text` has) —
+   and override the vertical one too if you report baselines. The speculative placements went 619 → 0.
+2. Re-establish the state from the view's real frame right before drawing, in the one place every path goes through:
+   `NSTextView.viewWillDraw()` → lay out at `bounds.width` unless the current layout already has the same lines (any
+   width between the longest line and the container). Measurements at foreign widths remain legitimate (baselines,
+   `sizeThatFits` for flexibility); the guard costs nothing when consistent and one layout per paragraph per width
+   change otherwise (13–44 re-lays per whole window session in practice, never per frame).
+Do not detect "real" placements by `bounds.origin == .zero` (real ones can be at the origin), and do not set
+`widthTracksTextView = true` on a display engine (a second layout on every frame change). An editor's layout should not
+set the container in `placeSubviews` at all: let the frame drive it (`widthTracksTextView` + the same `viewWillDraw`
+guard).
+
+**Test.** A unit check that measures the engine at a foreign width, calls `viewWillDraw()`, and expects the container
+not narrower than the frame, lines inside the frame and every attachment at the position the real pass placed its view
+(read from the layout manager directly — asking the engine for rects re-lays it and hides the bug). Plus a counter test
+for zero `(0,0)` placements. Accept text-layout changes in a live window resized across the column breakpoint, both
+directions, not only in host snapshots.

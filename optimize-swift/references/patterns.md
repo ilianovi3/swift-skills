@@ -230,14 +230,20 @@ struct ParagraphLayout: SwiftUI.Layout {             // subviews[0] = the NSText
         subviews[0].place(at: b.origin, proposal: ProposedViewSize(b.size))
         for (i, v) in subviews.dropFirst().enumerated() { v.place(at: CGPoint(x: b.minX + rects[i].minX, y: b.minY + rects[i].minY), proposal: ProposedViewSize(rects[i].size)) }
     }
+    // Horizontal guides implicit: the default merges subviews' guides by calling placeSubviews at (0,0) on every
+    // candidate size while the parent measures — each call re-lays the TextKit container at a width never shown.
+    func explicitAlignment(of _: HorizontalAlignment, in _: CGRect, proposal _: ProposedViewSize, subviews _: LayoutSubviews, cache _: inout ()) -> CGFloat? { nil }
     // + explicitAlignment(of: .firstTextBaseline / .lastTextBaseline) from the line fragments, or rows that align
     //   bullets and labels by first baseline lose it (a custom Layout has no text baseline by default).
 }
+// The text view restores the layout of its own frame before drawing (measurements at other widths stay legitimate):
+// override func viewWillDraw() { if bounds.width > 0 { engine?.place(bounds.width) }; super.viewWillDraw() }
 ```
 
 Rules learned on the way:
 - The container width is the engine's, not the view's (`widthTracksTextView = false`): measure and place at the same
-  width. An `NSViewRepresentable.sizeThatFits` that sets `containerSize` for a probe (SwiftUI probes 0, ∞, `nil` and
+  width — and since SwiftUI also measures and even places at widths that never reach the screen (root-causes §20),
+  re-lay at the frame width in `NSTextView.viewWillDraw` when the current lines don't fit it. An `NSViewRepresentable.sizeThatFits` that sets `containerSize` for a probe (SwiftUI probes 0, ∞, `nil` and
   other widths without changing the frame) must restore the frame width afterwards — otherwise the text wraps at the
   probe width and overflows the frame (an editor whose text ran under the panel below it).
 - Round the reserved width up to a whole point: TextKit 1 advances the next glyph by the integer part of the cell
@@ -268,7 +274,8 @@ Rules learned on the way:
   own never ticks in an off-screen window, and the text stayed at 10 % opacity in snapshots.
 - An editable `NSTextView` sized only through `NSViewRepresentable.sizeThatFits` kept the height of the previous text
   in a narrow column after typing; a custom `Layout` around it that measures the text at the proposed width each time
-  (relayout keyed by an edit counter) and pins the container to the placed width fixed it.
+  (relayout keyed by an edit counter) fixed it; the container follows the frame (`widthTracksTextView` + the
+  `viewWillDraw` guard), not `placeSubviews` — that one also runs for speculative sizes (root-causes §20).
 - Measure the paragraph's width from its line fragments (`enumerateLineFragments`, max `usedRect.maxX`), not from
   `NSLayoutManager.usedRect(for:)`: with an `NSTextView` on the container that returns the whole container width (a
   172 pt line reported 100 000 at the one-line probe), and every flow/stack placing the paragraph thinks it fills the
