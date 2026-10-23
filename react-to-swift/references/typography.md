@@ -163,3 +163,22 @@ the same test vectors; the usual drift is in what counts as a letter and what co
 ## Coverage test
 A unit test that every bundled face has glyphs for the characters your content uses
 (`CTFontGetGlyphsForCharacters` for e.g. "Ёё Її Ққ № « » “ ” — … $") catches broken subsets before users do.
+
+## Same sheet as DOCX (Word, LibreOffice, Pages)
+When a ported document view is also exported to Word, build the DOCX from the same style table as the screen and PDF
+(font, size, line height, weight per node style), not from Markdown — otherwise Word shows Calibri and bordered tables.
+- Units: 1 CSS px = 0.75 pt = 15 twips; `w:sz` is in half-points (round — 12.5 px becomes 9.5 pt, so a long line may
+  wrap one word earlier); `line-height` → `w:spacing w:line=<px × lh × 15> w:lineRule="atLeast"` (exact clips edits).
+- Word does not collapse neighbouring paragraph margins: give each paragraph `before` = the collapsed CSS gap and
+  `after` = 0; a table has no spacing of its own, so the gap above it goes into the previous paragraph's `after`;
+  two adjacent tables need an empty paragraph between them or Word merges them.
+- Lists as real lists (`numbering.xml`, hanging indent = `padding-left`), one `w:num` with `startOverride` per ordered
+  list; markers typed into the text are not editable. Keep named styles (Normal, Heading 1–3, Quote) so people restyle.
+- Element order inside `w:pPr`, `w:rPr`, `w:tblPr`, `w:tcPr`, `w:settings`, `w:font` follows the schema sequence;
+  Word reports a corrupt file on the wrong order. `compatibilityMode` 15 in `settings.xml` removes "Compatibility Mode".
+- Fonts: Word ignores variable-font axes (one default instance, synthetic bold). Embed static instances cut from the
+  bundled variable files (fontTools `instancer` + `subset`, RIBBI names: semibold goes into the family's Bold slot,
+  medium is its own family), obfuscated as ODTTF — XOR the first 32 bytes with the `w:fontKey` GUID bytes reversed.
+  LibreOffice renders embedded fonts (check with `soffice --headless --convert-to pdf` + `pdffonts` in a container
+  without the fonts); Quick Look (Finder, Mail) and Pages ignore them and also ignore `w:altName`; Quick Look also
+  autofits table columns whatever the widths say.
