@@ -186,8 +186,13 @@ for any type that is not itself on the pasteboard — SwiftUI resolves every `pu
 content type, so `[.audio]` (any content type) or a marker type absent from the board read data; only types actually
 present (`[.fileURL]`, `[.url]`) stay read-free. Decide from pasteboard metadata instead: the item types of
 `NSPasteboard(name: .drag)` (how many items carry `public.file-url`, whether your marker is there) never resolve a
-promise. A file dragged from Finder carries only `public.file-url` — its format is unknown until the drop; treat it like
-an empty MIME in the browser and let the drop decide. Mark your own drag sources with a private exported type
+promise. A file dragged from Finder carries only `public.file-url`, so its format needs the URL: read it **off the main
+thread** — a `@concurrent` function doing `NSPasteboard(name: board.name).readObjects(forClasses: [NSURL.self],
+options: [.urlReadingFileURLsOnly: true])`; a provider of your own process is then called on that background thread, not
+on main (measured), and the main thread never waits for another app. Show the overlay and its verdict only once the URLs
+arrived (a verdict without the format flashes "accept" before "refused"), tag the hover with the board's `changeCount`
+and drop an answer that comes after the drag left or after another drag began, and check the real URLs again at the
+drop (it can come first). Mark your own drag sources with a private exported type
 (`DataRepresentation(exportedContentType: .myAppDrag) { _ in Data() }`, declared in `UTExportedTypeDeclarations`) and
 refuse it in `validateDrop`; read URLs only in `performDrop` (`itemProviders(for: [.fileURL])`, then
 `loadObject(ofClass: URL.self)` with a handler, then back to the main queue).
