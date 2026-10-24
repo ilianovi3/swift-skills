@@ -461,3 +461,39 @@ not narrower than the frame, lines inside the frame and every attachment at the 
 (read from the layout manager directly — asking the engine for rects re-lays it and hides the bug). Plus a counter test
 for zero `(0,0)` placements. Accept text-layout changes in a live window resized across the column breakpoint, both
 directions, not only in host snapshots.
+
+## 21. A keychain read in the lazy `@State` of the `App`: a hang before the first frame after every update
+
+**Why.** An auth SDK configured where the app state is built — `@State private var state = AppState.live()` in the `App`
+struct — runs inside SwiftUI's scene construction (`applicationWillFinishLaunching` → `AppGraph.sceneList` →
+`LazyStatePropertyBox.update`), on the main thread, before any window exists. If that SDK reads the file-based macOS
+keychain synchronously (some SDKs do it on purpose: two threads on the file keychain can deadlock, so they keep every
+call on the caller's thread), the first launch after the binary's signature changed — an installed update, or another
+build of the same bundle id on this Mac — waits in `securityd` while it re-checks the caller against each item's access
+list. Production hang reports: ≥ 2000 ms, stack `SecItemCopyMatching` → `SecItemCopyMatching_osx` →
+`SecKeychainItemCopyContent` → `SSGroupImpl::decodeDataBlob` → `ClientSession::decrypt` → `mach_msg2_trap`. A warm
+launch hides it: the same three reads took 52–57 ms on the main thread, still before the first frame. A full static
+signature check of the ~90 MB bundle (`codesign --verify --deep --strict`) took 0.06–0.25 s, so the wait is not just
+hashing the bundle — do not try to make the bundle smaller instead.
+
+**Confirm.** Log the configure duration and its thread next to `applicationWillFinishLaunching` and the root view's
+`onAppear`: configure before both = it blocks the first frame. Ad-hoc-signed builds cannot reproduce the slow path —
+each rebuild has a new cdhash, and reading an item written by the previous build shows the keychain password prompt
+instead; reproduce only with the release signing identity, or prove the thread and order and fix by code.
+
+**Fix.**
+- Build the state without configuring the SDK; start a task that first reads every item of the SDK's keychain service on
+  a background thread (`@concurrent nonisolated`: list by attributes — no decryption — then `kSecReturnData` per item; drop
+  the bytes), then configures the SDK on the main actor. The window shows its "restoring session" state meanwhile, and a
+  password prompt, if the system asks, no longer freezes the app.
+- Strictly sequential: the warm-up ends before the SDK touches the keychain (its internal lock does not cover your thread).
+- Everything that may call the SDK before the "restoring" state ends — session restore, token for API requests, an
+  incoming sign-in link, sign-out — awaits the stored configure task.
+- Signposts around both steps; a log line with their durations.
+
+Measured (Release-like build, warm keychain): before — 3 reads in configure, 52–57 ms on main before the first frame;
+after — 0 keychain calls on main before the first frame, warm-up 160–169 ms in the background, configure 19–22 ms on main
+~100 ms after the root view appeared.
+
+**Test.** Inject the configure step: creating the auth state does not run it; awaiting the ready task does. The warm-up
+asserts it is not on the main thread (`pthread_main_np() == 0`) — making it `@MainActor` turns that test red.
