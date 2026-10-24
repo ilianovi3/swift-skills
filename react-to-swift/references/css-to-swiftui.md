@@ -130,6 +130,17 @@ row that barely fits at the default text size breaks again at the largest one.
   container raises the top safe area — the hosted root needs the app's `.ignoresSafeArea(.container, edges: .top)` or
   its content slides under the bar; measure the text's line by ink rows of `cacheDisplay` (the accessibility tree of
   an unshown window is empty); snapshot the theme frame (`contentView.superview`) to get the buttons in the picture.
+- A hover-revealed action at the end of a paragraph (`<p class="group">text<button class="opacity-0
+  group-hover:opacity-100">✎</button></p>` — the edit pencil after the last word): when the paragraph is a plain `Text`,
+  putting the button into the text flow means switching it to a TextKit paragraph with an inline attachment — heavier per
+  row and a different layout path for every editable text. Reserve the button's width on the trailing side instead
+  (`.padding(.trailing, w)`) and put it in `.overlay(alignment: .topTrailing)` sized to the first line height, with the
+  hover state on the paragraph view itself (before any `.frame(maxWidth: .infinity)`, so a short one-line text keeps the
+  pencil right after it). Mark it native: the reference places it after the last word.
+- An absolutely positioned control in the gutter of a row (`absolute top-2 -right-8 opacity-0 group-hover:opacity-100`,
+  «add field» next to a list row): an `.overlay(alignment: .topTrailing) { x.offset(x: 32) }` on the row; the row's
+  `onHover` does not cover the overlay's part outside the row frame, so the control needs its own `onHover` too, or it
+  fades the moment the pointer reaches it.
 - `overflow-hidden rounded-*` → `.clipShape(RoundedRectangle(cornerRadius:))` (clip only what the CSS clips).
 - `overflow: hidden` clips painting *and* hit testing; `.clipped()` / `.clipShape` clip painting only. Content laid out
   past its frame (a shimmer band 4× wide moved by `offset`, a scaled-to-fill image) still catches clicks outside the
