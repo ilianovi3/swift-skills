@@ -58,7 +58,10 @@ When no window may appear at all (the screen is in use), render the screen in a 
 content of an `NSWindow` that is never ordered in, the run loop spun for about a second, then `cacheDisplay(in:to:)`
 into a PNG; text scale = the root view's scale environment with the host frame multiplied by it (like the reference's
 root `zoom`). Gate such a suite on an environment flag so ordinary test runs skip it. `cacheDisplay` draws views, not
-the composited layer tree: layer filters (`.blur`, blurred shadows, backdrop effects) are missing. For those, render
+the composited layer tree: layer filters (`.blur`, blurred shadows, backdrop effects) are missing. It also draws a
+`Capsule().strokeBorder` with straight vertical ticks at both ends (the outermost pixel columns filled over half the
+height: 22 rows against 12 in the layer render) — a capsule chip that "has strokes at its edges" in such a capture is the capture,
+check it with the layer render below before touching the chip. For those, render
 the window's layer tree with `CARenderer(mtlTexture:options:)` into a `.managed` `bgra8Unorm` texture after
 `window.display()` — scale with the root layer's transform (anchor point zero), flip rows when saving (layer origin is
 bottom-left). A renderer keeps the tree it was attached to: after a state change attach a new one. Do not plan geometric assertions
