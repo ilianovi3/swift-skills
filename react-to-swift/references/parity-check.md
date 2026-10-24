@@ -47,6 +47,12 @@ Give the app launch arguments for every state you need (open screen X scrolled t
 Pin overlay scrollers too (`-AppleShowScrollBars WhenScrolling`): headless Chrome hides scroll bars, while a Mac with a
 mouse connected gives every `ScrollView` legacy scrollers that take 17 pt of its width — lines wrap differently from
 the reference and between your own runs.
+A frame passed at launch can lose to the system: if the user once tiled or zoomed the app's window, macOS restores
+that tile from the saved `NSWindow Frame <name>` default about 150 ms after launch (`WMClientWindowManager
+handleRestoreTilingStateActionResponse`) and resizes the window over your frame — some runs only, a timing race. For
+automated launches mask the saved frames in the argument domain (`'-NSWindow Frame main' ''` per autosave name); the
+user's defaults stay untouched. While the screen is locked, `CGWindowListCopyWindowInfo` reports a newly opened window
+scaled (about 0.9 around the screen centre): do not trust window sizes or captures taken behind the lock screen.
 
 When no window may appear at all (the screen is in use), render the screen in a unit test: an `NSHostingView` as the
 content of an `NSWindow` that is never ordered in, the run loop spun for about a second, then `cacheDisplay(in:to:)`
