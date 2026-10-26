@@ -568,3 +568,33 @@ first pass 448–465 → 293–305 ms (long meeting) and 465–480 → 271–289
   re-reads the file per resolution; the cache path costs 0.001 ms. Fix the identifier, not the file format.
 - Warming or caching per key in your own code does not help `Text`: SwiftUI calls `NSBundle` directly.
 
+
+## 23. An AppKit container inside SwiftUI: every nested hosting update re-solves Auto Layout for the whole subtree
+
+**Why.** A SwiftUI screen that embeds an `NSView` container (via `NSViewRepresentable`) whose subviews are themselves
+`NSHostingView`s/`NSHostingController`s — e.g. a hand-rolled stack that hosts one SwiftUI row per block to let AppKit
+prune hit-testing — pays for Auto Layout it never asked for. When a nested hosting view updates (a hover flag flips,
+`setRootView` after an animation), it calls `setNeedsUpdateConstraints`; AppKit propagates the request to the
+representable's host (`AppKitPlatformViewHost`), and the outer SwiftUI graph re-lays out the root. For the
+representable's sizing traits SwiftUI then asks the container for `fittingSize`, which builds a temporary `NSISEngine`
+over every descendant view and constraint (hosting views bring focus-ring and key-view proxy subviews of their own), so
+the cost grows with the number of NSViews in all rows, not with what changed.
+
+**Confirm.** In a hover recording: `ViewGraphRootValueUpdater.render` dominated by `NSHostingView.layout` of the *root*
+host → `AppKitPlatformViewHost.fittingSize` → `-[NSView fittingSize]` → `NSISEngine` /
+`_engineToAutoresizingMaskConstraints…`. A Debug swizzle of `setNeedsUpdateConstraints:` / `fittingSize` shows the
+chain and the rate: in a measured case ≈ 245 `fittingSize` calls per second while the cursor crossed rows, ≈ 0.9 ms each
+(Debug), each over ~340 views and ~1 360 constraints — while the rows' own `sizeThatFits` cache reported zero growth.
+Production recording (Release, 20 s hover over rows): render 2.8 s, of which `fittingSize` ~83 %. Count the subtree first
+(`subviews` recursively by class): most views were `_FocusRingView` and key-view proxies of the hosting views, not content.
+
+**Fix (measured so far).** Answer `fittingSize` (and `intrinsicContentSize`) of the container from its own cached row
+heights instead of letting AppKit solve the subtree: render −40 % (4.6–4.8 → 2.6–3.0 s per 20 s), main thread
+15.2 → 9.9–11.5 s; hit-testing is unchanged — that is a separate cost (one responder per node). The structural fix is to
+stop nested-host updates from invalidating the outer graph at all (hover state outside the row's SwiftUI graph, drawn
+by layers of the container), so the root never re-lays out on hover.
+
+**Traps.**
+- A synthetic hover path that misses the rows reproduces none of this: compare the recording's buckets (render,
+  hit-test inside nested hosts) with the user's before trusting a scenario.
+- Blaming the visible animation (a scale effect on a pin, a background fade) — samples under `render` showed none of it.
