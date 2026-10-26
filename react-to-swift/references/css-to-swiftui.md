@@ -231,6 +231,10 @@ VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a dra
 - `disabled:opacity-40` on a filled button fades the whole button at once: `.compositingGroup().opacity(0.4)`.
 - Hover/pressed backgrounds animate with the reference's transition duration; on dense repeated rows prefer state
   per item to avoid re-rendering all rows (see `optimize-swift`).
+- A `Button` with `.buttonStyle(.plain)` dims its label to opacity 0.75 while pressed, although the reference has no
+  `:active` style. When a strip of such buttons becomes drawing plus one container gesture (to remove a responder per
+  target), keep the dim: a `DragGesture(minimumDistance: 0)` sets the pressed target and the target draws at 0.75. Without
+  it the press is a visible difference from the previous build; with it the live-window pixel diff is 0 px.
 - Focus rings: native focus ring or the reference's ring; decide once per kit component.
 - A grid that is one focus stop (arrows move the selection, `.focusable()` + `.focusEffectDisabled()` on the grid) has no
   visible focus at all: draw the reference's `:focus-visible` ring on the selected cell while the grid is focused *from
