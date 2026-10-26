@@ -252,6 +252,13 @@ VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a dra
 - `<details>`/`<summary>` marker is a filled triangle ▸/▾ in the text color (~0.46 em), not a chevron icon.
 - `list-style: disc` in serif text is a ~5 pt circle 4 pt from the edge; the glyph "•" is smaller.
 - `contentEditable` single line still wraps by words like a span; Enter commits.
+- A list of editable rows keyed `key={i}` (rows without server ids) is safe in the browser — clicking a row's
+  remove `<button>` blurs the field first, so it commits before the list shifts — and corrupts data in SwiftUI: a
+  `.plain` `Button` does not take first responder, the field in focus keeps its draft, its view keeps index identity
+  after a row above is removed and commits into the row that slid under it (edit in row 3, remove row 1 → the
+  text lands in former row 4). Give rows a key that lives in the view's state (`@State ids: [UUID]` alongside the
+  rows, removed and appended in the same action, padded by position on outside length changes), not a UUID in the
+  model — a key that is not stored is regenerated on every decode and recreates every row on each refresh.
 - Keys of fields, macOS conventions (HIG: Esc cancels the current operation, Return confirms) — decide once in the kit,
   not per screen: an inline edit (`contentEditable` text) commits on Return and on blur, Esc restores the value it had
   on focus and leaves (Finder rename); a form field runs the form action on Return, Esc leaves the field keeping the
