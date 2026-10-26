@@ -25,6 +25,8 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 18. A language attribute on TextKit 1 text: an ICU break iterator built per layout
 19. Every NSTextView in a window observes every view's frame
 20. A `Layout` with mutable state placed for alignment guides: speculative `placeSubviews`
+21. A keychain read in the lazy `@State` of the `App`: a hang before the first frame after every update
+22. An in-app language through `\.locale`: the string table re-parsed on every `Text` resolution
 
 ---
 
@@ -88,6 +90,16 @@ partition removes.
   that extra transaction SwiftUI brought back the rows removed on the previous switch with their old graphs (`onAppear`
   fired for 6 rows, `body` for none; zero `_LazyLayout_Subviews.apply` samples in any later pass), which only helps a
   harness that walks between the same two tabs. Rows new to the tree are built in the first pass either way.
+- Stroked shapes (icons) below a responder are tested by their exact geometry on every search, with no bounding-box
+  pruning: SwiftUI calls the shape's `path(in:)` and then `strokedPath` for every icon leaf under a `Button`, an `.onHover`
+  or a `contentShape` (`ShapeStyledLeafView.contains` → `_StrokedShape.path`). Bench — 200 rows, each with an icon button,
+  an icon with `.help`, `.onHover` and a platform view behind: 200 searches called `path(in:)` 80 000 times (every icon,
+  every search); production recordings: 59–170 ms of `ShapeStyledLeafView.contains` per 20 s, half of it in `path(in:)`.
+  Cache the scaled path inside `path(in:)` (key: rect; a lock-protected dictionary): 0.29 → 0.05 µs per call, pixels
+  unchanged. `contentShape(Rectangle())` on the icon does not stop the evaluation (the content-shape responder still asks
+  its children); `allowsHitTesting(false)` + `contentShape(Rectangle())` stops it but costs as much (the extra responder
+  is the cost); only `allowsHitTesting(false)` alone makes the search cheaper (−25 %) — and makes an icon-only plain button
+  without its own content shape unclickable, so audit those first.
 - Removing off-screen rows from hit-testing with `allowsHitTesting(visible)` + `onScrollVisibilityChange` cut the
   search by 40 % but every toggle redraws text (§8). Prefer the AppKit partition.
 - Separate hosting views do not share one layout pass: a change every row observes now re-lays out every row
@@ -232,6 +244,14 @@ counting `layout()` in an unshown panel, first wait out appear animations (count
   every rebuild. Build `<lang>.lproj` sub-bundles once (`Bundle(path: bundle.path(forResource: lang, ofType:
   "lproj"))`) and call `String(localized: key, bundle: langBundle, locale:)`: 20 µs, same strings and plural variants
   (the language is chosen by the bundle; `locale:` only formats arguments).
+- A variable font requested by family name (`kCTFontFamilyNameAttribute` + variation axes) sorts every named instance of
+  the family on the first request in the process (`CopyFontRefsForRequest` → `CFQSortArray` → `TClientFontEntity` →
+  `TCGFont::CopyURL`, a file check per entity in the sandbox): Source Serif 4 Variable has 60 instances — 47 ms on the main
+  thread, Geist with 18 — 7 ms; later sizes cost 0.05 ms, so a per-size font cache does not help, and a warm-up on a
+  background thread did not help the main thread (still 30 ms there). Requesting the base instance by PostScript name
+  (`SourceSerif4Variable-Roman` + the same axes) costs 11.7 ms and returns the same metrics, advances, glyph ids and
+  variations, yet SwiftUI drew 2–5 glyph-edge pixels 2–42/255 differently — not pixel-identical; keep the family request
+  where the look must not move by a pixel.
 - Derived lists (sort/filter) computed in `body`: compute when inputs change.
 - Client-side search on every keystroke: the cost is the no-match case, every string scanned to the end. Measured on
   500 strings × 2.5 KB (Cyrillic, `-O`, M-series): `localizedStandardContains` 18.6 ms per pass;
@@ -509,3 +529,42 @@ after — 0 keychain calls on main before the first frame, warm-up 160–169 ms 
 
 **Test.** Inject the configure step: creating the auth state does not run it; awaiting the ready task does. The warm-up
 asserts it is not on the main thread (`pthread_main_np() == 0`) — making it `@MainActor` turns that test red.
+
+## 22. An in-app language through `\.locale`: the string table re-parsed on every `Text` resolution
+
+**Why.** An app that switches its UI language without a restart usually puts the chosen language into
+`.environment(\.locale, …)`. SwiftUI resolves `Text("key")` (and `Alert` titles, and the accessibility link rotor) with
+`-[NSBundle localizedAttributedStringForKey:value:table:localization:]` and passes an explicit `localization` whenever the
+environment locale's identifier differs from `Locale.current.identifier`. CoreFoundation caches a bundle's string table
+only for lookups *without* an explicit localization (`CFBundle_Strings.c`: "Only consult the cache when a specific
+localization has not been requested"), so every resolution opens, decodes and parses the whole `Localizable.strings` again
+(Xcode compiles a String Catalog to a UTF-16 XML plist; ~230 KB for 1 200 keys). The identifiers rarely match by accident:
+macOS adjusts `Locale.current`'s language to the main bundle's localization and keeps the language's region
+(`ru_US@rg=frzzzz`), while a locale built from `Locale.Components(locale: .current)` with replaced `languageComponents`
+loses that region (`ru@rg=frzzzz`) — a different identifier for the same language.
+
+**Confirm.** Main-thread samples in `_copyStringTable` → `_CFPropertyListCreateFiltered` → `parseXMLElement`, called from
+`_CFBundleCopyLocalizedStringForLocalizationTableURLAndMarkdownOption` ← `LocalizedStringKey.resolve` (views),
+`AccessibilityNode.linkRotor` (accessibility) and `MakeAlertStorage.resolveTitle`. Production recordings (Release, 20 s):
+422 ms in navigation between screens, 188 ms in scrolling a long screen, 140 ms in a list. Microbenchmark — 1 000
+`Text(key, bundle:)` laid out in an `NSHostingView`: 0.09 ms per text with no `\.locale`, `.current`,
+`.autoupdatingCurrent` or `Locale(identifier: Locale.current.identifier)`; 1.3–1.5 ms per text with `Locale("en")`,
+`Locale("en_US")` (current was `en_US@rg=frzzzz`) or the component-built locale. Direct
+`CFBundleCopyLocalizedStringForLocalization`: 1.35 ms with a localization, 0.001 ms with `NULL`. Neither markdown parsing
+(the `Alert` path uses the plain-string lookup and pays the same) nor the SwiftPM resource bundle is the cause.
+
+**Fix.** When the chosen language is the process language, put `Locale.current` itself into the environment (and into
+formatters); build a component locale only for a language that differs from the process one (a switch before restart —
+correct but slow until the next launch). Guard both sides: `Locale.current.language.languageCode` and
+`Bundle.main.preferredLocalizations.first` equal the chosen language — the bundle's choice is fixed at its first lookup,
+so a static snapshot of it is exact. Formatting stays the same where the user's locale has a region override (`@rg=`);
+without one, the component locale had silently dropped the system region (an `en_GB` user got 12-hour US times), so
+`.current` is also the correct per-app-language behaviour. A test in the app host: the process language's locale has
+`Locale.current.identifier`. Measured on an offscreen screen-open harness (Release, same machine, interleaved A/B):
+first pass 448–465 → 293–305 ms (long meeting) and 465–480 → 271–289 ms (kitchen-sink screen), snapshots byte-identical.
+
+**Traps.**
+- A binary plist (`plutil -convert binary1`) makes the explicit-localization lookup ~17× cheaper (4.5 → 0.27 ms) but still
+  re-reads the file per resolution; the cache path costs 0.001 ms. Fix the identifier, not the file format.
+- Warming or caching per key in your own code does not help `Text`: SwiftUI calls `NSBundle` directly.
+
