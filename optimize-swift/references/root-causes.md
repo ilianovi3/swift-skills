@@ -333,6 +333,17 @@ recorder's phase enum (`case recording(id, t, paused)`), so every reader of "is 
   sidebar-only value 284 → 36 ms (the rows no longer re-render).
 - Environment values with closures: make them `Equatable` by a revision of the data they were built from; build the
   expensive parts (a name-matching regex, parsed texts) once per revision in a shared memo.
+- No `Binding` as a plain stored property of a screen view (`var tab: Binding<Tab?> = .constant(nil)` — a test hook to
+  switch the tab from outside). The list page's body re-ran 12–16 times a second while the list scrolled, although its
+  parent did not re-render: `Self._printChanges()` printed `tab changed.` on every run, the parent printed nothing, and
+  each run rebuilt the page's derived data (filter, grouping, the filter strip's layout). Why SwiftUI treats the binding
+  as changed is not documented; removing the property was the whole fix. Pass an outside override through the
+  environment (`@Entry var tabOverride: Tab?`, read with `@Environment`; a test wraps the page in a view that reads its
+  `@Observable` box and sets the value) and keep the app's own value in `@State`. Release, 6 s synthetic scroll with
+  the data from the server, medians of three interleaved: body prints 74 → 2 per scroll (Debug), samples in the page
+  body 32 → 0, render 1 483 → 1 208 ms, main thread 2 669 → 2 416 ms; three flicks with inertia: body 15 → 5, render
+  690 → 574 ms, hitches 85 → 73 ms/s. Check with `_printChanges()` while scrolling — a screen body that prints during a
+  scroll that changes none of its inputs has an input the framework cannot compare.
 - Move fast-changing UI state out of the screen's `@State` into a small `@Observable` with per-item flags (§3): the
   "open moment" and search text of a side panel lived in the screen's state, so a click on a timestamp rebuilt the
   whole screen (50–68 ms); with flags it rebuilds two rows (2 ms).
