@@ -252,6 +252,12 @@ VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a dra
 - `<details>`/`<summary>` marker is a filled triangle ▸/▾ in the text color (~0.46 em), not a chevron icon.
 - `list-style: disc` in serif text is a ~5 pt circle 4 pt from the edge; the glyph "•" is smaller.
 - `contentEditable` single line still wraps by words like a span; Enter commits.
+- `contentEditable` is text that *becomes* an editor when focused — not an editor per cell. In lists and tables show
+  `Text` with the editor's font, line and exact box, and mount the `NSTextView`/`TextField` only for the cell being edited
+  (click → editor with the caret at the click point; Esc/Return/blur → back to `Text`). An editor per visible cell is
+  created inside the lazy stack's measurement and re-laid out every scroll frame (optimize-swift, root cause 24). Make
+  display and editor break lines the same way (`Text` uses the `.standard` line-break strategy; give the TextKit
+  paragraph style the same) and keep their sizes identical, or entering edit mode visibly reflows.
 - A list of editable rows keyed `key={i}` (rows without server ids) is safe in the browser — clicking a row's
   remove `<button>` blurs the field first, so it commits before the list shifts — and corrupts data in SwiftUI: a
   `.plain` `Button` does not take first responder, the field in focus keeps its draft, its view keeps index identity
