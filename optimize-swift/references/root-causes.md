@@ -162,14 +162,15 @@ then only break lines per width. Invalidate in `updateCache` when subviews chang
 **Confirm before adding a cache.** Count what a layout really measures: give it children wrapped in a one-child
 probe `Layout` that increments a counter in `sizeThatFits` (it counts only the calls SwiftUI's own size cache did
 not absorb), host offscreen, and read three passes — first, a sibling re-render at the same width, width + 1. In a
-production port: column and clamp layouts whose fields are plain numbers measured each child once per new width and
-**0** on a same-width re-render — a `makeCache` on top would remove nothing. The cache paid only where a layout asks a
-size that does not depend on the proposal: a min-width wrapper (`shrink-0` that can also stretch) re-asked the
-label's ideal on every width step, 2 → 1 measures per step once the ideal moved to `makeCache` (label changes still
-update it — `updateCache` defaults to `makeCache`). A layout value with an array field (a column spec) built in the
-parent's `body` counts as new on every body and re-measured one cell per same-width re-render; conforming the layout
-to `Equatable` did not change that, one value stored once (a property of the row) did (1 → 0) — cheap enough here to
-leave, worth knowing before blaming the layout.
+production port: column and clamp layouts measured each child once per new width and 0–1 on a same-width re-render
+— a `makeCache` on top would remove nothing (Apple's own advice: cache only when profiling shows a gain). The cache
+paid only where a layout asks a size that does not depend on the proposal: a min-width wrapper (`shrink-0` that can
+also stretch) re-asked the label's ideal on every width step — 2 → 1 measures per step once the ideal moved to
+`makeCache`, measured on both builds. Prove the invalidation with a red run: a label or text-size change must give
+the same width as a freshly built view; with an empty `updateCache {}` that check fails, with the default (it calls
+`makeCache`) it passes. Treat a difference of one measurement between runs of the same code as noise: a column
+layout re-measured one empty cell on a same-width re-render in some runs and none in others; `Equatable` on the
+layout and a hoisted layout value were tried and gave no repeatable signal — don't chase it.
 
 ## 6. CPU text rasterization in rows
 
