@@ -27,6 +27,8 @@ Each entry: why it costs, the signature to look for (`scripts/analyze_trace.py` 
 20. A `Layout` with mutable state placed for alignment guides: speculative `placeSubviews`
 21. A keychain read in the lazy `@State` of the `App`: a hang before the first frame after every update
 22. An in-app language through `\.locale`: the string table re-parsed on every `Text` resolution
+23. An AppKit container inside SwiftUI: every nested hosting update re-solves Auto Layout for the whole subtree
+24. An editor in every cell of a lazy list: `contentEditable` ported as a text view per cell
 
 ---
 
@@ -610,3 +612,46 @@ by layers of the container), so the root never re-lays out on hover.
 - A synthetic hover path that misses the rows reproduces none of this: compare the recording's buckets (render,
   hit-test inside nested hosts) with the user's before trusting a scenario.
 - Blaming the visible animation (a scale effect on a pin, a background fade) — samples under `render` showed none of it.
+
+
+## 24. An editor in every cell of a lazy list: `contentEditable` ported as a text view per cell
+
+**Why.** A web table of inline-editable text is a `<span contentEditable>` per cell — text that takes a caret when it is
+focused. Ported literally, every visible cell mounts an `NSTextView` (or `NSTextField`) through `NSViewRepresentable`.
+A lazy stack materializes rows while scrolling and measures them inside its layout pass, so the platform view is created
+*inside* the measurement (`makeNSView` under the custom `Layout.sizeThatFits` that asks the representable for its size)
+and every visible cell is laid out again through TextKit on each frame. One text view costs ~0.7 ms to create; a register
+of ~80 rows kept ~20 text views alive, created and destroyed ~120 of them per 6 s of scrolling and ran ~1 700 layout
+measurements per second.
+
+**Confirm.** Time Profiler during a scroll: `makeNSView` of the representable under `ViewList.applyNodes` /
+`LazySubviewPlacements.placeSubviews` → `lengthAndSpacing`, and the editor's `sizeThatFits` (`NSLayoutManager.ensureLayout`)
+on the main thread every frame. A counter in `makeNSView`/`dismantleNSView` shows creation tracking the scroll speed.
+
+**Fix.** Show the text as `Text` with the same font and line metrics and mount the editor only for the cell being edited:
+a click (and the list's keyboard cursor, and VoiceOver's activate) begins editing — the display is not a responder, so no
+`.focusable()` per cell (it adds a key-view proxy and a focus-ring view to every cell). Size the display exactly like the
+editor — the editor's width rule (including what it answers for a zero or infinite proposal) and its height rounding — so
+entering edit mode moves neither glyphs nor neighbours, and put the caret where the user clicked: keep the click point
+(`NSApp.currentEvent.locationInWindow`) and, once the editor is first responder, `setSelectedRange` to
+`characterIndexForInsertion(at: convert(point, from: nil))`. Measured on a register (6 s synthetic scroll, Release,
+interleaved A/B): the editor's `makeNSView` 75 → 0 samples, its layout measurement 156 → 0, render 2 833 → ~2 350 ms,
+hitches 218 → ~110 ms/s, p95 frame 25 → 16.7 ms, hit-testing under the scroll view 807 → ~135 samples (text views answer
+hit-tests; `Text` does not).
+
+**Traps.**
+- Line breaking differs: `Text` breaks with the `.standard` strategy (it pushes a word down rather than leave one word on
+  the last line); TextKit 1 has no strategy by default and Chromium keeps the orphan. Same width, different lines — set
+  `lineBreakStrategy = .standard` on the editor's paragraph style (one place for all TextKit editors) or render the display
+  with TextKit; pick one and make display and editor agree.
+- `Text` and TextKit rasterize the same glyphs at the same places with ±1/255 antialiasing differences — compare
+  screenshots with a small per-channel threshold, not byte equality. A TextKit view with `clipsToBounds` cuts descenders
+  when the CSS line is shorter than the font's line; `Text` does not.
+- An `NSTextField` at rest is not `Text` and not the web: it draws glyphs heavier (≈ +15 % ink, also with
+  `AppleFontSmoothing = 0`; `Text` and the field editor while editing match Chromium's antialiased text), its ideal width is
+  the advance plus 4 pt (room for the caret, not rounded to the pixel), it ignores `.kerning`, `lineLimit(1)` clips instead of
+  adding "…", and at rest it wraps 4 pt narrower than while editing. Showing a row field as `Text` is therefore *closer* to a
+  web reference — check against the web, not against the old field.
+- Tests: an `autofocus` that calls `makeFirstResponder` from `DispatchQueue.main.async` never runs while a `@MainActor`
+  Swift Testing test spins `RunLoop.main` — the test occupies the main queue; wait with `await Task.sleep`. Font smoothing
+  differs between a package test host and the app (`AppleFontSmoothing`): compare `NSTextField` pixels in the app host.
