@@ -693,3 +693,37 @@ into momentum: 0/3 → 3/3 opened. Row bodies per hover sweep: 101 → 0.
 - Synthetic input: a modifier key pressed by a script and never released makes every later synthetic click a ⌘-click
   (here: "open in new window"; the main window never changes, so the click looks lost). Check
   `CGEventSource.flagsState(.hidSystemState)` and release modifiers on exit.
+
+## 26. SwiftUI inside an `NSScrollView`: AppKit scrolls it with the single-threaded 60 Hz behavior
+
+**Why.** Since macOS 26 `NSScrollView` does not apply wheel deltas in the event handler; an `NSScrollingAnimator` banks them
+and advances the clip on the ticks of its own display link (the deceleration after the last event is that animator
+consuming the unused delta). Which link depends on the document: a class that overrides `scrollWheel:` without declaring
+`isCompatibleWithResponsiveScrolling` disables responsive scrolling, and the scroll view gets
+`NSScrollingBehaviorSingleThreadedVBL` — a main-thread link at the display's default rate, **60 Hz on ProMotion** unless the
+system raises the rate for real HID input. `NSHostingView` overrides `scrollWheel:` (that is how SwiftUI receives
+gestures) and declares nothing, so any SwiftUI content inside an `NSScrollView` — including SwiftUI's own `ScrollView`
+(`HostingScrollView` → `AppKitScrollView`) — scrolls single-threaded. Measured with a clip probe (clip origin on every tick
+of a 120 Hz display link, synthetic trackpad wheel, 12 bursts): plain `NSView` document 87 % of ticks moved (120 Hz, the
+misses are input jitter); the same `NSView` with an empty `scrollWheel:` override 53 % (`M.M.M…`, 60 Hz); `NSHostingView`
+document 53 %; SwiftUI `ScrollView` 53 %. A 120 Hz display link of your own does not lift AppKit's link (the probe ran at
+8.3 ms while the clip moved every 16.7 ms); synthetic cursor moves and warps do not either. The user's own trackpad in the
+same app ran the single-threaded link at 120 Hz (sampled gaps 8.3 ms), so the harness sees 60 Hz where the user may see
+120 — until input stops (inertia): only a probe under real input answers that.
+
+**Fix.** Wrap the content in your own `NSScrollView` (`NSViewRepresentable`) whose document is
+`final class Host: NSHostingView<Content> { override class var isCompatibleWithResponsiveScrolling: Bool { true } }`.
+The scroll view returns to `ConcurrentVBL`: 87 % of ticks moved (two runs), and the clip keeps moving while the main
+thread is busy (nested hosting views inside the document did not flip it back). Scroll-to-id then goes through the clip
+(`clip.scroll(to:)` + `reflectScrolledClipView`) with target frames reported by `anchorPreference`, instead of
+`ScrollViewProxy`/`scrollPosition`.
+
+**Traps.**
+- Count motion, not frames: the 120 Hz share of commits was 89 % while the clip moved at 60 Hz (hover commits between
+  scroll steps). Log every `NSClipView` `boundsDidChangeNotification` with a timestamp and histogram the gaps (8.3 vs
+  16.7 ms); no display link is needed for that probe, and a probe link could itself raise the display rate.
+- Who moves the clip: `trace_callers.py callers <trace> 'scrollToPoint|setBoundsOrigin' 12` — one chain,
+  `NSScrollingBehaviorSingleThreadedVBL._advanceTimeWithDisplayLink ← NSScrollingAnimator.consumeUnusedDeltaForTimestamp ←
+  _NSDisplayLinkForwarder.displayLinkDidFire` means the single-threaded behavior.
+- Responsive scrolling scrolls into regions the main thread has not drawn yet; lazily built rows can show as blank under a
+  fast flick — check with window captures during a 1200 px/s scroll before shipping, and use `prepareContent(in:)` if so.

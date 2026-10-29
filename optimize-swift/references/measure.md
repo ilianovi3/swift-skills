@@ -61,10 +61,12 @@ scroll bar (isolates hit-testing/hover); hover sweep without scroll; screen open
   after the first ~0.3 s (`M.M.M…`). The scroll itself (`NSScrollingBehaviorSingleThreadedVBL._advanceTimeWithDisplayLink`)
   ran at 60 Hz in both; A's extra frames were light commits (`NSHostingView.beginTransaction` → `updateGraph`, 1.5 ms)
   from `.onHover` responders reacting to content moving under a still cursor. Removing those responders "lost" 120 Hz
-  without changing what the eye sees. When a refactor changes the 120 Hz share, check motion directly: log
-  `enclosingScrollView.contentView.bounds.origin.y` per display-link tick during live scroll (`willStartLiveScroll` …
-  `didEndLiveScroll`) and count ticks with a moved clip. In the Hitches `hitches-updates` table the same shows as app
-  updates exactly 16.7 ms apart with swap ids skipping one.
+  without changing what the eye sees. When a refactor changes the 120 Hz share, check motion directly: log every
+  `NSClipView` `boundsDidChangeNotification` with `CACurrentMediaTime()` and histogram the gaps (8.3 ms = 120 Hz,
+  16.7 = 60) — no display link needed, and a probe link with a 120 Hz preference could itself raise the display rate.
+  In the Hitches `hitches-updates` table the same shows as app updates exactly 16.7 ms apart with swap ids skipping one.
+  The 60 Hz itself was AppKit's single-threaded scrolling behavior for a hosting-view document (`root-causes.md` §26); the
+  same build under the user's real trackpad ran that link at 120 Hz, so decide frequency questions on real input.
 
 Attribution: `scripts/trace_callers.py callers TRACE 'regex' [depth]` prints the call chains above the deepest match
 (who triggers it); `inside TRACE 'regex'` prints what the matched frames spend time on (self and inclusive).
