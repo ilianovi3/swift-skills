@@ -54,6 +54,17 @@ scroll bar (isolates hit-testing/hover); hover sweep without scroll; screen open
   two clicks, and the 16 ms were one `mouseMoved` hit test. Only a frame that is mostly busy is a hang; `max` alone
   misleads whenever the user pauses.
 - `--series` — per half second: display renders, app updates, main-thread ms. Use it when lag comes and goes.
+- **The 120 Hz share counts commits, not motion.** A commit that only redraws hover state between two scroll steps is
+  a "120 Hz frame" to the trace, yet the content did not move. Measured on one long SwiftUI document in an
+  `NSScrollView` (trackpad wheel, ProMotion): build A 85–92 % "120 Hz", build B 67–77 % — but the clip origin, sampled
+  on every tick of a 120 Hz display link, moved on 413/800 ticks in A and 439/823 in B, both strictly every other tick
+  after the first ~0.3 s (`M.M.M…`). The scroll itself (`NSScrollingBehaviorSingleThreadedVBL._advanceTimeWithDisplayLink`)
+  ran at 60 Hz in both; A's extra frames were light commits (`NSHostingView.beginTransaction` → `updateGraph`, 1.5 ms)
+  from `.onHover` responders reacting to content moving under a still cursor. Removing those responders "lost" 120 Hz
+  without changing what the eye sees. When a refactor changes the 120 Hz share, check motion directly: log
+  `enclosingScrollView.contentView.bounds.origin.y` per display-link tick during live scroll (`willStartLiveScroll` …
+  `didEndLiveScroll`) and count ticks with a moved clip. In the Hitches `hitches-updates` table the same shows as app
+  updates exactly 16.7 ms apart with swap ids skipping one.
 
 Attribution: `scripts/trace_callers.py callers TRACE 'regex' [depth]` prints the call chains above the deepest match
 (who triggers it); `inside TRACE 'regex'` prints what the matched frames spend time on (self and inclusive).
