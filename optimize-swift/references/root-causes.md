@@ -655,3 +655,41 @@ hit-tests; `Text` does not).
 - Tests: an `autofocus` that calls `makeFirstResponder` from `DispatchQueue.main.async` never runs while a `@MainActor`
   Swift Testing test spins `RunLoop.main` — the test occupies the main queue; wait with `await Task.sleep`. Font smoothing
   differs between a package test host and the app (`AppleFontSmoothing`): compare `NSTextField` pixels in the app host.
+
+## 25. Hover and click on every row of a lazy list: a tracker under the stack, rows inert
+
+**Why.** A web list row is `<a class="hover:bg-…">`. Ported literally, every row gets `Button` + `.onHover` +
+`@State hover` + `.contextMenu` + `.contentShape`. Every hover change rebuilds the row body, and the fade runs through the
+SwiftUI graph for every frame. Each row's responders stay in the window's hit-testing for every mouse move and every scroll
+event. A scroll "cover" (a transparent overlay that is hit-testable while the scroll phase is active) hides the cost but
+eats the first click during momentum: the app ignores the mouse until inertia ends.
+
+**Fix.** The container owns hover, press, menu and tooltips; rows are passive content. One `NSViewRepresentable` in
+`.background` of the `LazyVStack` (same frame as a named coordinate space) holds one `NSTrackingArea` and maps the point to
+row frames that each row reports with `onGeometryChange(in: .named(space))`. It draws the highlight as Core Animation
+layers under the content (no graph frames), takes `mouseDown/mouseUp`, `menu(for:)` and tooltips (`addToolTip` by frame
+plus `NSViewToolTipOwner`), and pauses hover between `willStartLiveScroll` and `didEndLiveScroll` (the highlight rides with
+its row like `:hover`; re-target on scroll end). Press is never paused. Put `.allowsHitTesting(false)` on the whole row
+content. VoiceOver gets `.accessibilityElement(children: .combine)` + `.isButton` + `accessibilityAction`s.
+Measured on a 49-row server list (Release, interleaved A/B, medians of 3): hover sweep render 544 → 7 ms, main 1327 → 626,
+hit-testing 243 → 161; scroll render 1215 → 745, hitches 55 → 2.6 ms/s, main 2282 → 1744, hit-testing 410 → 374. Click 0.3 s
+into momentum: 0/3 → 3/3 opened. Row bodies per hover sweep: 101 → 0.
+
+**Traps.**
+- SwiftUI's hit test returns the platform view under passive content *without calling its `hitTest`*. Overriding `hitTest`
+  on the tracker to say "no target here" does nothing; forward misses with `super.mouseDown` instead.
+- Anything still hit-testable in a row (a `.help` tooltip, an `Image`, a `Text` without `allowsHitTesting(false)`) is a
+  SwiftUI responder there. The click goes to the hosting view, which has no gesture, and nothing happens. Adding a tap
+  gesture to those leaves "fixes" the click and makes scrolling hit-testing worse than before (410 → 670). Without the
+  cover, the search walks every responder in front of the tracker on every wheel event. Move tooltips to the tracker
+  instead.
+- `.contextMenu` on a passive row (no `contentShape`) only fires over its responders. Build the menu in the tracker's
+  `menu(for:)`; handle ⌃-click there too. `.contentShape(.contextMenuPreview, …)` is unavailable on macOS.
+- A hidden test-host window does not deliver mouse events to its views (`NSApp.sendEvent` reaches nothing). Post the
+  events, take them with `nextEvent` (it sets `NSApp.currentEvent` for ⌘ checks), and call `mouseDown/Up` on the view that
+  `window.contentView.hitTest` returns.
+- A CG-drawn rounded fill and SwiftUI's `RoundedRectangle` background differ by 1/255 in corner antialiasing only. The
+  same `RoundedRectangle(cornerRadius:).path(in:)` keeps the shape; the interior is byte-identical.
+- Synthetic input: a modifier key pressed by a script and never released makes every later synthetic click a ⌘-click
+  (here: "open in new window"; the main window never changes, so the click looks lost). Check
+  `CGEventSource.flagsState(.hidSystemState)` and release modifiers on exit.
