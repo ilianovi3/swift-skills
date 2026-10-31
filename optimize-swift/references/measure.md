@@ -194,6 +194,15 @@ Posting wheel events with `CGEvent` gives repeatable numbers for regressions, bu
 hit-testing path under it is skipped: a fix decided on synthetic numbers was wrong once (rejected native paragraphs
 at −13 % on resize while the real cost was hit-testing under the cursor). Decide with real input.
 
+- **Prove every run actually scrolled, per run, and drop the ones that did not.** A synthetic scroll can land on a screen
+  with nothing to scroll: a click helper that leaves the cursor where it clicked (scroll and move helpers usually restore
+  it) put the pointer over a list at launch. The app holds the list's current version while the pointer is over it, so
+  the first sync showed an empty or partial list. 9 of 12 runs of one scenario scrolled nothing; their render cost was
+  ~270 instead of ~700 ms, and they went into the medians. Park the cursor in a neutral spot before each launch. Judge each
+  run by the clip's *travel* (max − min of its origin), not by the number of clip moves: an empty page still rubber-bands,
+  ~400 moves over ~280 pt, against ~2 450 pt for a real list. Below a threshold (a screen height), mark the run invalid
+  and keep it out of the median.
+
 ## Etiquette: the user's screen
 
 - Recordings and app snapshots use the user's screen: announce ("taking the screen for ~2 min"), wait for "ready".
