@@ -727,3 +727,25 @@ thread is busy (nested hosting views inside the document did not flip it back). 
   _NSDisplayLinkForwarder.displayLinkDidFire` means the single-threaded behavior.
 - Responsive scrolling scrolls into regions the main thread has not drawn yet; lazily built rows can show as blank under a
   fast flick — check with window captures during a 1200 px/s scroll before shipping, and use `prepareContent(in:)` if so.
+- Building the wrapper (a long SwiftUI page as the document, measured on two pages, synthetic wheel):
+  - Size the document from the content, not Auto Layout: root `content.fixedSize(horizontal: false, vertical: true)
+    .onGeometryChange { height }` → document height, width from the clip in `tile()`, `sizingOptions = []`, and give the
+    representable a `sizeThatFits` that returns the proposal — without it SwiftUI asks the platform host for `fittingSize`
+    on every layout (274 ms per 8 s scroll).
+  - The outer frame must be `.frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)`. Without
+    `minHeight: 0` the frame takes the content's height while the document is still 1 pt tall, the hosting view centres the
+    root, and the page then slides in from above inside the appear animation (the row stack moved −1163 → 968 pt over 1.2 s).
+  - Make the scroll view opaque with the page colour (`drawsBackground`, `backgroundColor` resolved from the environment): the
+    SwiftUI background behind a platform view is not in `cacheDisplay` snapshots, so pixel tests see black.
+  - Use a flipped `NSClipView` so a short document sits at the top.
+  - Result on the page with headroom: clip moved on 14.5 → 74–76 % of 120 Hz gaps for the whole run (84 % until the page
+    end; the bounce at the edge breaks the gaps), hitches 159 → 7–11 ms/s. On a heavy page (≈10 ms of SwiftUI work per
+    scroll step: geometry actions of hover targets, `.onHover` responders, render of the outer graph — because the document
+    moves inside the window, every step updates window-relative geometry) commits stay at 60 Hz; the clip still moves more
+    often (+40 % steps, so +20 % main-thread time at a lower cost per step).
+  - Busy-stretch metrics change meaning: with `ConcurrentVBL` almost all main-thread work runs inside
+    `_NSScrollingConcurrentMainThreadSynchronizer _synchronize:` back to back, so stretches ≥ 40 ms grew 4–7 → 40–43 while
+    freezes went 1–2 → 0 and window captures during a 1200 px/s flick showed no blank band. Judge them by visible gaps and
+    clip motion, not by the stretch count alone.
+  - AppKit asks the document class `isCompatibleWithResponsiveScrolling` on every coordinate conversion through the clip
+    (`_insetBounds`, `_convertRect_fromAncestor`, tooltips): 25–107 ms per run — the price of the override.
