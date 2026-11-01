@@ -416,6 +416,11 @@ main thread busy at display rate for as long as they are visible, even when noth
 shimmering bars runs ~70 body updates per frame at 120 Hz. Move the loop to Core Animation: the render server runs it
 with no main-thread work, and the curves and durations can be kept identical.
 
+Swapping `repeatForever` for `TimelineView(.animation)` is not a fix and not a regression: measured on one spinner and
+one pulsing dot (Debug, hidden window), both cost the same ≈ 45–52 ms of main thread per second, ±15 — `repeatForever`
+also calls `animatableData` at display rate (≈ 120 calls/s), it does not hand the loop to the render server. Only a
+Core Animation layer brings it to zero.
+
 - Shimmer: one `CAGradientLayer` per bar with a repeating `CABasicAnimation` on `locations` or a translation; take the
   phase from `CACurrentMediaTime()` modulo the period so bars stay in sync like the old shared clock.
 - Pulsing dot: `CABasicAnimation(keyPath: "opacity")`, `autoreverses`, `repeatCount = .infinity`, same timing function.
