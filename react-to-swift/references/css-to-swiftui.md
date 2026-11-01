@@ -252,7 +252,18 @@ VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a dra
 
 ## Form controls and disclosure
 - `<input type="checkbox" class="accent-ink size-3.5">` → native checkbox with tint, or a drawn 14 pt box; both are
-  fine for performance — pick the closer look.
+  fine for performance — pick the closer look. A `<label>` row (`flex gap-2.5 items-start`: box, then a title and a hint)
+  ported as `Toggle(isOn:) { title + hint }.toggleStyle(.checkbox)` is not 1:1: AppKit puts the label 4 pt after the box
+  (not the reference's gap × text scale) and places the box by its own rule (measured: text 6 pt left, box 0.5 pt up at
+  13.5 px). Keep the box `labelsHidden()` in an `HStack` with the reference gap when the pair must match to the pixel; a
+  label-as-`Toggle` row is a visible change, not a free refactor.
+- A popover anchor inside a container that owns hover (one tracker for many items) must stay a `Button`: if the kit swaps
+  the anchor for a passive target whenever a hover map is in the environment, the anchor loses its Tab stop. Read the flag
+  outside and clear the map in the environment for the popover itself.
+- Accessibility tree checks in an off-screen `NSHostingView`: without `.environment(\.accessibilityEnabled, true)` SwiftUI
+  builds a single group; even with it the bridge does not vend scroll content of a window that is never shown, and walking
+  bridge objects (new wrappers on each call) needs a node cap. Check behaviour (an action, a label count) instead of diffing
+  whole trees there.
 - `<details>`/`<summary>` marker is a filled triangle ▸/▾ in the text color (~0.46 em), not a chevron icon.
 - `list-style: disc` in serif text is a ~5 pt circle 4 pt from the edge; the glyph "•" is smaller.
 - `contentEditable` single line still wraps by words like a span; Enter commits.
