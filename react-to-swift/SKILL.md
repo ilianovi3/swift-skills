@@ -52,6 +52,8 @@ avatar, field) before screens. Nearly every "the screen looks off" bug in practi
 screen — fixing it once in the kit fixes all screens.
 
 ### 5. Translate styles
+After the port, count DOM-shaped leftovers (`scripts/shape_lint.py`) and replace them per `references/dom-port-signatures.md`.
+
 Use `references/css-to-swiftui.md` (box model, flex/grid, borders, shadows, colors, units, motion) and
 `references/typography.md` (fonts, variable axes, CSS line height, tracking, smoothing, wrapping). The most common
 pixel errors, in order of frequency:

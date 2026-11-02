@@ -697,6 +697,11 @@ into momentum: 0/3 → 3/3 opened. Row bodies per hover sweep: 101 → 0.
   `hitTest` on 400 rows, Debug, 0.729 → 0.775 ms. Traps: a real control inside a target with an action loses its click, so give a
   `TextField` or a field being edited no pointer action; a wrapper target without an action must own the press only for a child of
   the *same* frame, or a row wraps its smaller control's action around itself.
+- Cost of moving hover into a target map (one app, Release, synthetic 62-row hover sweep, before the last screens moved vs
+  after): hit-test 345 → 463 ms, hover dispatch 515 → 659, main 1152 → 1235, while SwiftUI render fell 70 → 51 ms and
+  stalls stayed 0. More areas answer to one tracker/overlay, so the window's responder search walks more; the graph
+  re-render is what got cheaper. Wheel scroll and tick scenarios did not change (clip moved 88.3 → 87.8 %, 61.3 → 60.3).
+  Expect the hit-test line to rise, not fall, and judge the move by render and row-body counts, not by hit-test alone.
 - Anything still hit-testable in a row (a `.help` tooltip, an `Image`, a `Text` without `allowsHitTesting(false)`) is a
   SwiftUI responder there. The click goes to the hosting view, which has no gesture, and nothing happens. Adding a tap
   gesture to those leaves "fixes" the click and makes scrolling hit-testing worse than before (410 → 670). Without the
