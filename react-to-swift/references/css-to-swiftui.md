@@ -263,6 +263,11 @@ VoiceOver (`AccessibilityNotification.Announcement`): focus never moves to a dra
 - A popover anchor inside a container that owns hover (one tracker for many items) must stay a `Button`: if the kit swaps
   the anchor for a passive target whenever a hover map is in the environment, the anchor loses its Tab stop. Read the flag
   outside and clear the map in the environment for the popover itself.
+- A row highlight painted by a shared layer under the content (one AppKit fill view, `RoundedRectangle` path, per-container
+  tracker) is not byte-identical to the row's own SwiftUI `background(_, in: RoundedRectangle)`: 16–54 px differ on a 3-row
+  list, in both themes and at both text scales (corner anti-aliasing). The fill also brings its own fade, where a row may have
+  had none. A short list in a popover keeps its own background, switched by the container's hover flag: the look stays
+  byte-identical and the per-node hover response is gone anyway.
 - Accessibility tree checks in an off-screen `NSHostingView`: without `.environment(\.accessibilityEnabled, true)` SwiftUI
   builds a single group; even with it the bridge does not vend scroll content of a window that is never shown, and walking
   bridge objects (new wrappers on each call) needs a node cap. Check behaviour (an action, a label count) instead of diffing
