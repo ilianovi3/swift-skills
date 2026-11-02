@@ -174,6 +174,15 @@ the same width as a freshly built view; with an empty `updateCache {}` that chec
 layout re-measured one empty cell on a same-width re-render in some runs and none in others; `Equatable` on the
 layout and a hoisted layout value were tried and gave no repeatable signal — don't chase it.
 
+**Where a cache pays a lot: a search inside the layout.** `text-wrap: balance` as a binary search over the child's
+width re-ran on each layout call: the steps evict SwiftUI's size cache of that child, so nothing was absorbed and one
+width step cost 26 measures (three searches: `sizeThatFits` and two `placeSubviews`). The found width in the layout
+cache, keyed by the proposed width: 8 measures on a new width, 0 on the same one, identical pixels. **Place on the proposal you measured.** A
+wrapper that measures `.unspecified` but places with `ProposedViewSize(bounds.size)` pays one more measure on every
+pass (2 → 1, ideal plus limit 3 → 2): compute one proposal and use it in both methods. The default `updateCache` also
+fires when only a child's own observed state changes, not just when the parent's `body` re-runs — checked with a child
+reading an `@Observable` the parent does not read: an empty `updateCache {}` leaves a stale size, the default does not.
+
 ## 6. CPU text rasterization in rows
 
 **Why.** Text with an exact CSS-like line height (`.lineHeight(.exact)` on macOS 26 / iOS 26, or attributed text with
