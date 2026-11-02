@@ -11,6 +11,7 @@ multiplier if the app has one (`value * k`), except hairlines (1 px borders stay
 - Wrapping rows
 - Position, overlays, z-order
 - Colors
+- Slots
 - Shadows and blur
 - Opacity and states
 - Motion
@@ -164,6 +165,21 @@ row that barely fits at the default text size breaks again at the largest one.
 - `text-ink-2` vs `text-ink` mismatches are frequent: read the computed `color`, including inherited ones.
 - Markdown in localized keys turns emails/URLs into blue links (`Text(LocalizedStringKey)`): pass placeholders as
   plain strings.
+
+## Slots (`children`, `aside?: ReactNode`)
+
+- An optional slot is a generic with a default, not `AnyView?`: `init(aside: Aside? = EmptyView?.none)` (SE-0347, inference
+  from a default expression). One initializer, no constrained overloads per slot; a plain call infers `EmptyView`, and
+  callers still passing `AnyView` keep compiling, so a kit can change first and call sites unwrap later.
+- A label slot (`aside?: string`) is a small `View` type holding the `Text` (`where Aside == BlockAside`), not an erased
+  styled view.
+- `cond ? nil : View()` gives the slot its concrete type; a `@ViewBuilder` closure with `if` would give `Optional<V>` that
+  is itself non-nil, and code testing "is there a slot" would lie.
+- A closed set of slot contents in an array (table header cells) is an `enum Head: View`, not `[AnyView]`.
+- Left `AnyView`, with a reason: a slot passed through the environment (the key has one concrete type; prefer a value in
+  the environment and a builder at the call site), and one hosting controller per row of different types.
+- Prove the swap: `@State` of a view in the slot survives a parent update and a field in it keeps focus and typed text.
+  `slot.id(tick)` as a mutant must turn that red.
 
 ## Shadows and blur
 `box-shadow: 0 12px 40px -14px rgb(0 0 0 / .35)` has a negative spread, which SwiftUI `shadow` cannot express:
