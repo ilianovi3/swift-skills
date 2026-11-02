@@ -678,6 +678,16 @@ into momentum: 0/3 → 3/3 opened. Row bodies per hover sweep: 101 → 0.
 **Traps.**
 - SwiftUI's hit test returns the platform view under passive content *without calling its `hitTest`*. Overriding `hitTest`
   on the tracker to say "no target here" does nothing; forward misses with `super.mouseDown` instead.
+- A tracker in `.background` sits under everything: any responder between it and a target (a fill, a card's opaque backing, an
+  `NSTextView`, the label itself) takes the point, and the click dies in the hosting view. On a real page the rows cannot all be
+  made inert. Fix: one more representable in `.overlay` of the same container. Its `hitTest` *is* called, top first: over a target
+  with an action return the tracker (AppKit takes a foreign view from `hitTest`, and the drag and up events follow it), otherwise
+  `nil`, and the search continues down to `Button`, text views and scrolling. A/B on a column with a fill, a hit-testable label
+  and a text view under the target: click lost in all three → fired once in all three; a neighbouring `Button` and text selection
+  outside targets unchanged; wheel over a target still scrolls (it travels the responder chain from the tracker). Cost: window
+  `hitTest` on 400 rows, Debug, 0.729 → 0.775 ms. Traps: a real control inside a target with an action loses its click, so give a
+  `TextField` or a field being edited no pointer action; a wrapper target without an action must own the press only for a child of
+  the *same* frame, or a row wraps its smaller control's action around itself.
 - Anything still hit-testable in a row (a `.help` tooltip, an `Image`, a `Text` without `allowsHitTesting(false)`) is a
   SwiftUI responder there. The click goes to the hosting view, which has no gesture, and nothing happens. Adding a tap
   gesture to those leaves "fixes" the click and makes scrolling hit-testing worse than before (410 → 670). Without the
