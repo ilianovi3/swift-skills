@@ -773,3 +773,23 @@ thread is busy (nested hosting views inside the document did not flip it back). 
     clip motion, not by the stretch count alone.
   - AppKit asks the document class `isCompatibleWithResponsiveScrolling` on every coordinate conversion through the clip
     (`_insetBounds`, `_convertRect_fromAncestor`, tooltips): 25–107 ms per run — the price of the override.
+
+## 27. A blank window at launch while the auth SDK waits for the network
+
+Symptom: an empty window for up to a minute, only on a bad connection, with an idle main thread (no hang is reported, the
+trace shows nothing). The root view shows an empty state until an auth status leaves "loading", and that status is set after
+`await sdk.refreshClient()`. A dropped or silently reset connection holds it for the `URLSession` timeout (60 s by default,
+longer when the request is retried after a reset).
+
+- The auth SDK has usually read its cache when it was configured, so "signed in or not" is known without any request. Set the
+  status from the cache, run the refresh in the background, let its session-changed event sign the person out if the session
+  was revoked. Subscribe to the events before starting the refresh.
+- Measured on a local socket that accepts, stays silent 15 s and resets (cached session): out of "loading" 61.6 s → 1.1 s, no
+  session 0.4 s, blank share of the window 100 % → list with a strip.
+- Measure the wait from outside, against a reset rather than a refusal: a refused connection fails in about 0.5 s and hides
+  the bug. Reproduce with a copy of the app under its own bundle id (own container and keychain service), a publishable key
+  pointing at the local socket, and timed window captures.
+- Every other empty state that waits on a first server answer (an onboarding decision) is the same bug: after 1.5 s say what
+  is happening, after 8 s say what is being waited for, and bound the wait.
+- An error strip driven only by request failure appears a minute late: start a timer with the first request and cancel it on
+  the first answer. Count connection resets (`networkConnectionLost`, `secureConnectionFailed`) as "server not responding".
