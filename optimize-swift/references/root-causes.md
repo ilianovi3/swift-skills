@@ -824,3 +824,31 @@ step; 40 rows (33 mounted) → 165. Anchor preferences with one reader per row c
   the first responder (an edit in progress), the row with an open popover (its anchor), the row with the keyboard cursor.
   `onAppear` side effects (autofocus, "start editing") run again on every remount — audit them.
 - The z-order of mounted rows changes with the mount order; it only matters if row content overflows its frame.
+
+## 29. A derived list computed in `body` on a cache miss: database reads per row on the main thread
+
+**Symptom.** Switching a tab or filter of a long list freezes for 20–400 ms; the trace under `<Page>.body` shows the list
+builder, the merge of local edits, and `DatabaseQueue.read` / `fetchOne` (one read per row's parent record) or JSON
+decoding of every record. A memo keyed by the inputs helps only on a hit: every edit, server answer or language change
+is a miss, and the miss runs in `body`.
+
+**Fix.** `body` only reads: the ready list for the current key, else the previous list of the same view (no flash),
+else `nil` → a skeleton. The miss runs in `.task(id: key)` on the page: snapshot the inputs on the main actor as a
+`Sendable` value, compute in a `@concurrent nonisolated` function, drop the result if the task was cancelled (the key
+changed), write it to an `@Observable` memo. Batch the reads the builder needs into one query per screen
+(`filter(keys:)`; one field out of a stored JSON blob via SQLite JSON1 `json_extract` instead of decoding the record).
+
+**Trap: controls that change themselves before the data.** A checkbox (`Toggle`/`NSButton` flips its own state on click)
+and an inline text editor (shows the typed text on commit) read the previous list for the frames the background compute
+takes, so they flip back for a frame and then forward. On the user's own edit, overlay just that record's edits onto the
+previous list synchronously (cheap: no reads but the one edited record), store it under the old key, and let the
+background compute replace it. Undo through the generic path only delays the value; nothing flips back because the view
+did not change ahead of the data.
+
+**Measured** (Release, 434 records, tab switches): samples under the page `body` 69–89 → 31–36; the list builder, the
+edit merge and `DatabaseQueue.read` 39–59 → 0; freezes 2 of 3 runs → 0 of 3. Long frames from the group menu remained:
+those come from rebuilding the lazy list, not from the data, and need their own fix.
+
+**Testing note.** A synchronous `@MainActor` test that pumps `RunLoop.main.run(…)` never starts a `.task`: the test
+itself is a job on the main queue, and a nested run loop does not drain that queue. Make the test `async` and wait with
+`try await Task.sleep`, or put the computed value in the cache before rendering a snapshot.
