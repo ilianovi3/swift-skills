@@ -793,3 +793,34 @@ longer when the request is retried after a reset).
   is happening, after 8 s say what is being waited for, and bound the wait.
 - An error strip driven only by request failure appears a minute late: start a timer with the first request and cancel it on
   the first answer. Count connection resets (`networkConnectionLost`, `secureConnectionFailed`) as "server not responding".
+
+## 28. Hosted rows: every row in the window pays for every scroll step
+
+Symptom: a long page built as one `NSHostingView` per row inside an `NSScrollView` (the §1 partition, with responsive scrolling
+from §26) scrolls at 120 Hz on short pages and at 60 Hz on long ones; the main thread spends ~10 ms per clip step. The rows that
+are off screen cost as much as the visible ones.
+
+**Why.** When the document moves inside the window, SwiftUI recomputes window-relative geometry for **every** hosting view that
+is in the window, not only the visible ones: every `onGeometryChange` of every row runs (`GeometryActionBinder`), whatever
+coordinate space it reads (`.named` of the row, `.local`, a row-level space — all the same), and AppKit walks all subviews to
+update tracking areas (`displayCycleUpdateStructuralRegions`). A unit probe: 10 rows × 5 targets → 50 geometry callbacks per
+step; 40 rows (33 mounted) → 165. Anchor preferences with one reader per row cut it to one per mounted row, not to the visible.
+
+**Fix.** Keep only the rows near the visible rect (± one screen) as subviews; keep the others as detached
+`NSHostingController`s (state and height cache live with the controller). Mount and unmount on the clip's
+`boundsDidChange` and in `layout()`. Measured (Release, one heavy 40-row page): clip at 120 Hz 0–25 % → 88–90 %, main thread
+5.1–5.6 → 2.5–2.7 s per run, render 2.7–3.0 → 1.1–1.2 s, stretches ≥ 40 ms 32–53 → 0; a short page unchanged.
+
+**Traps.**
+- Measure rows in the window, then unmount. `sizeThatFits` of a detached host gave 4 of 40 rows a different height (one by
+  63 pt); the row then "grows" on its first mount, under the finger. Measure as before (rows mounted while the height pass
+  runs), unmount the far ones a few hundred ms after the last measurement. Keep a test that scrolls the whole page and
+  asserts every row's frame is unchanged.
+- Removing a hosting view from the window fires `onDisappear` inside it; adding it back fires `onAppear`, but
+  `onGeometryChange` stays silent (same frame). Anything that registers itself by geometry and unregisters on disappear
+  (hover maps, tooltips) must re-register on `onAppear` from the last known frame.
+- Keep in the window: every row while VoiceOver or Switch Control runs (`NSWorkspace.isVoiceOverEnabled`,
+  `isSwitchControlEnabled`, KVO — hop to the main actor explicitly, the callback queue is not promised), the row that owns
+  the first responder (an edit in progress), the row with an open popover (its anchor), the row with the keyboard cursor.
+  `onAppear` side effects (autofocus, "start editing") run again on every remount — audit them.
+- The z-order of mounted rows changes with the mount order; it only matters if row content overflows its frame.
