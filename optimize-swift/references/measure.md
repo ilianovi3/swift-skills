@@ -118,6 +118,18 @@ learned the hard way:
   `signpost-name`, `subsystem` and the formatted message in `os-log-metadata`; cache the exports next to the trace — a
   two-minute export per table otherwise). A 25 ms first pass is 25 samples; summed over 120 switches it is a real
   profile, while in the whole trace it drowns under the 0.25 s animation that follows it.
+- **Price a component by removing it in place, not by bench cost × count.** An isolated bench says "0.46 ms per chip,
+  so a screen with 164 chips pays 75 ms" — but a screen that builds rows below the fold later only pays for the chips
+  on its first pass. Put a temporary static switch in the component's `body` (real view vs a plain shape of similar
+  size) and a counter of `body` calls, then open the real screen alternately A/B/A/B in one process and compare the
+  main thread's CPU of the first pass (wall-clock medians of separate runs moved 230 → 390 ms base↔base on a busy
+  machine; interleaved CPU medians agreed to ±0.05 ms per chip with the bench). Measured: 21–26 chips on the first
+  pass of a 62-minute and a kitchen-sink screen, 10–12 ms of a 205–215 ms open, the other 138 chips spread over the
+  deferred rows' frames — not worth a cache. Warm up two rounds before counting.
+- **One test host survives only ~20 opens of a heavy screen.** Closed windows' graphs are not freed in a test host
+  (text views live to the end of the run), and the next open aborts in `AG::data::table::grow_region()`
+  (`precondition_failure` under `AGGraphReadCachedAttribute`) — an AttributeGraph region exhausted, not a bug in the
+  view. Keep the rounds per process low (10 opens of two screens passed, 24 + a few did not) or split runs.
 - **Search beside the rows too.** One `hitTest` at a point inside the scroll content but outside every row gives the cost
   of the tree without the rows; the difference to a search on a row is the most any per-row fix (inert content, AppKit
   partition) can save. On a list of ~15 rows it was 0.3 of 0.6 ms — the rest was the hosting view's own setup and the
