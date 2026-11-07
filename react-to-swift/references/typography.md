@@ -109,6 +109,18 @@ selects, avatars and fields all match to ≤ 0.13 pt at 1× and 1.2× text size.
   check the lift, it came out 4 pt high). `TextEditor` honours `.lineHeight` for the step but sits its first line
   2–3 pt high and drifts on serif at large sizes — not a drop-in either. Test the step with two hard lines against a
   `Text` of the same font: first-line middle, step and height.
+- **Inline boxes grow the line.** A pill or chip in running text (`inline-flex align-middle`, avatar + name) taller
+  than the text pushes its line box apart: line = max(strut above, box tops) + max(strut below, box bottoms), with
+  the box's *layout* position — `translate-y` moves only the drawing. A 19.6 px pill in 13.5/1.5 text: 20.25 → 21.22
+  (measured in Chromium; an author chip middle-aligned on a 12.5 px span: 21.48). TextKit 1 with min = max line height clamps every line
+  and loses this; set the line yourself in `layoutManager(_:shouldSetLineFragmentRect:…)` from the attachments in the
+  glyph range (store each cell's layout box; read the line baseline from there, not `box.baseline`, for anything you
+  place on the line). Mixed sizes count too: a 12.5 px span inside 13.5/1.5 text adds 0.5 below the baseline.
+- **`vertical-align` is dead inside flex.** A pill with `align-middle` wrapped in an `inline-flex` (baseline-aligned)
+  is a flex item: the wrapper takes the first item's baseline instead — for an `<img>` avatar that is the image's
+  bottom edge (pill rides ~6 px high), for an initials avatar the initials' baseline (sits low). Same component, two
+  positions and two row heights (23.34 / 23.05). Check the reference for this before porting its numbers; the fix
+  belongs in the reference (`align-middle` on the wrapper).
 
 ## Tracking
 `tracking-[-0.01em]` → `.kerning(-0.01 * fontSize * scale)`; `tracking-wide` = 0.025em. Headings with negative
