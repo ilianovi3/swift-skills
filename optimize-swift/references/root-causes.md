@@ -397,8 +397,20 @@ cold again. Watch the cache folder's entries get rewritten at the moment of the 
 - When the user still has to wait, show a distinct state ("loading the model, usually up to 30 s"), not the generic
   "processing"; downloading (with progress) and loading are different states.
 
+- Models used only now and then (a diarizer at the end of a meeting, a language-ID model on doubt) go cold too and pay
+  at the worst moment. Warm them once per (app build, OS build) — a marker in defaults — in the background when idle:
+  load and drop. The cache becomes warm and nothing stays resident. Not during a recording or a measured run: a cold
+  load cannot be cancelled and competes for the Neural Engine. Measured: a 4-model diarizer 1.07 s cold vs 0.13–0.19 s
+  warm; Whisper large-v3 80 s vs 1.6 s.
+- The cache's place and key belong to Core ML: no `MLModelConfiguration` option moves it or keys it by model hash, so
+  "make the cache survive the update" is not available to the app — warming is the fix. The `Caches` folder in the
+  sandbox container is not wiped by a Sparkle-style update (the entry folders persist; their contents are rewritten).
+
 **Trap.** A harness or unit test that loads the same model twice in one build sees only the warm number; measure cold
-with a fresh binary name (new cache folder) or a re-signed binary.
+with a fresh binary name (new cache folder) or a re-signed binary. The cache keeps one signature per model: running two
+differently signed builds of the same app (a dev build and the installed release, a harness and its re-signed copy)
+alternately makes each of them cold every time — the original binary loaded cold again (0.70 s vs 0.19 s) right after
+its re-signed copy ran.
 
 ## 17. Whole audio files in memory for a speech model
 
